@@ -2,7 +2,9 @@
 
 ## Expo HAS CHANGED
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
+Read the exact versioned docs at https://docs.expo.dev/versions/v54.0.0/ before writing any code.
+
+Проект на **SDK 54**, а не 57 — причина в ADR-003. Не поднимай версию, не прочитав его.
 
 ## Источник истины
 
