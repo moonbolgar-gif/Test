@@ -2,10 +2,16 @@
  * Навигация. docs/SPEC.md §6.0 — карта экранов.
  */
 
+import { useCallback } from 'react';
 import { Text } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import { useAlarmWatcher } from '../features/alarm/useAlarmWatcher';
 
 import { colors, fonts } from '../design/tokens';
 import { scale } from '../design/type';
@@ -30,6 +36,12 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator();
+
+/**
+ * Ссылка на навигацию нужна, чтобы будильник мог открыть экран срабатывания
+ * откуда угодно — он звонит независимо от того, какой экран сейчас открыт.
+ */
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const TAB_ICONS: Record<string, string> = {
   Home: '🏠',
@@ -68,8 +80,17 @@ function MainTabs() {
 }
 
 export function Navigation() {
+  const openRing = useCallback(() => {
+    if (!navigationRef.isReady()) return;
+    // Экран срабатывания всегда поверх остального: испытание нельзя пропустить,
+    // потому что пользователь стоял на другой вкладке.
+    navigationRef.navigate('AlarmRing');
+  }, []);
+
+  useAlarmWatcher(openRing);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={MainTabs} />
 

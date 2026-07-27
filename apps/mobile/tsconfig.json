@@ -2,5 +2,9 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  // Файлы *_test.ts исполняются встроенным раннером Node, а не React Native:
+  // у них другие глобальные типы и другой стиль импортов (с расширением .ts).
+  // Проверяются отдельно — см. npm run test:alarm.
+  "exclude": ["**/*_test.ts"]
 }

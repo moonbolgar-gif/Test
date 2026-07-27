@@ -1,9 +1,17 @@
 /**
  * Экран победы. docs/SPEC.md §6.12.
+ *
+ * Карточка 9:16 показывает настоящее записанное видео с наложенными слоями
+ * из §4.3: логотип, счётчик серии, хук-подпись.
+ *
+ * Чего не хватает до §4.3: композитинга — слои живут поверх видео в интерфейсе,
+ * но не вплавлены в файл. Экспортированный ролик уйдёт в Stories без них.
+ * Это `RiseVideoModule` либо ffmpeg, Фаза 3.
  */
 
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { Platform, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 import { Button } from '../components/Button';
 import { Confetti } from '../components/animated';
@@ -13,16 +21,39 @@ import { scale, type } from '../design/type';
 import { formatMoney, pluralDays } from '../lib/format';
 import { useStore } from '../lib/store';
 
-/** Превью шеринг-карточки 9:16 (§6.12). Настоящий композитинг — §4.3, Фаза 3. */
-function ShareCardPreview({ streak }: { streak: number }) {
+/** Превью шеринг-карточки 9:16 (§6.12) поверх записанного видео. */
+function ShareCardPreview({ streak, videoUri }: { streak: number; videoUri: string | null }) {
+  const player = useVideoPlayer(videoUri, (instance) => {
+    instance.loop = true;
+    instance.muted = true;
+    instance.play();
+  });
+
   return (
     <View style={styles.shareCard}>
-      <Text style={styles.shareLogo}>RISE</Text>
-      <View style={styles.shareCenter}>
-        <Text style={styles.shareStreak}>{streak}</Text>
-        <Text style={styles.shareStreakLabel}>DAY STREAK 🔥</Text>
+      {videoUri ? (
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      ) : null}
+
+      {/* §4.3: тёмный градиент сверху и снизу — ради читаемости подписей.
+          Два полупрозрачных прямоугольника вместо градиента: на маленьком
+          превью разница не видна, а зависимости меньше. */}
+      <View style={styles.scrimTop} pointerEvents="none" />
+      <View style={styles.scrimBottom} pointerEvents="none" />
+
+      <View style={styles.shareContent}>
+        <Text style={styles.shareLogo}>RISE</Text>
+        <View style={styles.shareCenter}>
+          <Text style={styles.shareStreak}>{streak}</Text>
+          <Text style={styles.shareStreakLabel}>DAY STREAK 🔥</Text>
+        </View>
+        <Text style={styles.shareHook}>я победил будильник 💪{'\n'}а ты сможешь?</Text>
       </View>
-      <Text style={styles.shareHook}>я победил будильник 💪{'\n'}а ты сможешь?</Text>
     </View>
   );
 }
@@ -46,10 +77,15 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
 
   const share = async (): Promise<void> => {
     markShared();
+    const message = `я победил будильник 💪 серия ${profile.streak} ${pluralDays(profile.streak)}\nа ты сможешь? rise.app`;
     try {
-      await Share.share({
-        message: `я победил будильник 💪 серия ${profile.streak} ${pluralDays(profile.streak)}\nа ты сможешь? rise.app`,
-      });
+      // §4.3: файл уходит только по явному действию пользователя (§4.4).
+      // На iOS системный лист принимает локальный файл через url.
+      await Share.share(
+        outcome?.videoUri && Platform.OS === 'ios'
+          ? { url: outcome.videoUri, message }
+          : { message },
+      );
     } catch {
       // Пользователь закрыл системный лист — это не ошибка.
     }
@@ -65,8 +101,10 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
         <Text style={[type.h1, styles.title]}>{title}</Text>
         <Text style={[type.body, styles.subtitle]}>{subtitle}</Text>
 
-        <ShareCardPreview streak={profile.streak} />
-        <Text style={[type.caption, styles.shareNote]}>Готово к Stories · 9:16</Text>
+        <ShareCardPreview streak={profile.streak} videoUri={outcome?.videoUri ?? null} />
+        <Text style={[type.caption, styles.shareNote]}>
+          {outcome?.videoUri ? 'Готово к Stories · 9:16' : 'Видео не записано · 9:16'}
+        </Text>
 
         {profile.streak > 0 && profile.streak % 10 === 0 ? (
           <Card tone="lime" style={styles.reward}>
@@ -101,8 +139,22 @@ const styles = StyleSheet.create({
     aspectRatio: 9 / 16,
     backgroundColor: colors.black,
     borderRadius: radius.cardSm,
+    overflow: 'hidden',
+  },
+  shareContent: {
+    ...StyleSheet.absoluteFillObject,
     padding: spacing.md,
     justifyContent: 'space-between',
+  },
+  scrimTop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, height: 56,
+    backgroundColor: 'rgba(14,15,19,0.45)',
+  },
+  scrimBottom: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0, height: 130,
+    backgroundColor: 'rgba(14,15,19,0.5)',
   },
   shareLogo: {
     fontFamily: fonts.extrabold,

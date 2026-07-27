@@ -1,24 +1,27 @@
 /**
  * Экран срабатывания. docs/SPEC.md §6.10 — ключевой экран продукта.
  *
- * Отличия демо-режима от §6.10, которые обязательно закрыть перед релизом:
- *   - экран открывается вручную, а не по системному будильнику (§4.1);
- *   - нет звука с нарастанием громкости и вибрации;
- *   - нет записи видео-кружка (§4.3) — кружок показывает заглушку;
- *   - кнопки навигации не заблокированы.
- * Всё перечисленное требует нативных модулей и относится к Фазе 0.
+ * Что здесь работает по-настоящему: звук с нарастанием громкости, вибрация,
+ * запись видео с фронтальной камеры, подсветка лица экраном, экран не гаснет,
+ * аппаратная кнопка «назад» заблокирована, окно испытания отсчитывается вне экрана.
+ *
+ * Чего не хватает до §6.10 и почему: срабатывания при выгруженном приложении.
+ * Это `RiseAlarmModule` (§4.1), нативный код, Фаза 0.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Brightness from 'expo-brightness';
 import * as Haptics from 'expo-haptics';
-import Svg, { Circle } from 'react-native-svg';
+import { useKeepAwake } from 'expo-keep-awake';
 
 import { Button } from '../components/Button';
+import { useAlarmSound } from '../features/alarm/useAlarmSound';
 import { MathChallenge } from '../features/challenge/MathChallenge';
 import { PatternChallenge } from '../features/challenge/PatternChallenge';
 import { ShakeChallenge } from '../features/challenge/ShakeChallenge';
+import { CameraCircle, type CameraCircleHandle } from '../features/video/CameraCircle';
 import { colors, fonts, radius, spacing } from '../design/tokens';
 import { scale, type } from '../design/type';
 import { formatCountdown, formatMoney } from '../lib/format';
@@ -26,65 +29,67 @@ import { remainingWindowMs } from '../lib/demoServer';
 import { useStore } from '../lib/store';
 import { CHALLENGE_WINDOW_MS } from '@rise/shared';
 
-const CIRCLE_SIZE = 104;
-const RING_STROKE = 4;
-
-/** Кружок с прогресс-кольцом, заполняющимся по мере истечения окна (§6.10). */
-function VideoCircle({ progress }: { progress: number }) {
-  const r = (CIRCLE_SIZE - RING_STROKE) / 2;
-  const circumference = 2 * Math.PI * r;
-
-  return (
-    <View style={styles.circleWrap}>
-      <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} style={StyleSheet.absoluteFill}>
-        <Circle
-          cx={CIRCLE_SIZE / 2} cy={CIRCLE_SIZE / 2} r={r}
-          stroke={colors.ink} strokeOpacity={0.15} strokeWidth={RING_STROKE} fill="none"
-        />
-        <Circle
-          cx={CIRCLE_SIZE / 2} cy={CIRCLE_SIZE / 2} r={r}
-          stroke={colors.ink} strokeWidth={RING_STROKE} fill="none"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - progress)}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
-        />
-      </Svg>
-      <View style={styles.circleInner}>
-        <Text style={styles.circleGlyph}>🎥</Text>
-      </View>
-    </View>
-  );
-}
-
 export function AlarmRingScreen({ navigation }: { navigation: { replace: (route: string) => void } }) {
   const run = useStore((s) => s.activeRun);
   const completeRun = useStore((s) => s.completeRun);
   const failRun = useStore((s) => s.failRun);
 
-  const [remaining, setRemaining] = useState(() =>
-    run ? remainingWindowMs(run.id) : 0,
-  );
+  const [remaining, setRemaining] = useState(() => (run ? remainingWindowMs(run.id) : 0));
+  const camera = useRef<CameraCircleHandle>(null);
   const settled = useRef(false);
 
-  // §6.10: аппаратная кнопка «назад» на экране срабатывания не работает —
-  // испытание нельзя закрыть, его можно только пройти или провалить.
+  // §6.10: экран не гаснет, пока звонит будильник.
+  useKeepAwake();
+  useAlarmSound(run !== null);
+
+  // Подсветка лица: экран поднимается на максимальную яркость, потому что
+  // у фронтальной камеры нет вспышки. Прежнее значение возвращается на выходе,
+  // иначе телефон останется слепящим после испытания.
+  useEffect(() => {
+    let previous: number | null = null;
+    let cancelled = false;
+
+    Brightness.getBrightnessAsync()
+      .then((value) => {
+        if (cancelled) return;
+        previous = value;
+        return Brightness.setBrightnessAsync(1);
+      })
+      .catch(() => {
+        // Яркость недоступна — экран всё равно светит лаймовым фоном §6.10.
+      });
+
+    return () => {
+      cancelled = true;
+      if (previous !== null) {
+        Brightness.setBrightnessAsync(previous).catch(() => {});
+      }
+    };
+  }, []);
+
+  // §6.10: аппаратная кнопка «назад» не работает — испытание нельзя закрыть,
+  // его можно только пройти или провалить.
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
     return () => subscription.remove();
   }, []);
 
   const finish = useCallback(
-    (won: boolean) => {
+    async (won: boolean) => {
       if (settled.current) return;
       settled.current = true;
+
+      // Запись останавливается до перехода на следующий экран: файл нужен
+      // экрану победы, а камера в этот момент уже размонтируется.
+      const videoUri = await camera.current?.stopAndSave() ?? null;
+
       if (won) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        completeRun();
+        completeRun(videoUri);
         navigation.replace('Win');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        failRun();
+        failRun(videoUri);
         navigation.replace('Fail');
       }
     },
@@ -97,7 +102,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
     const timer = setInterval(() => {
       const left = remainingWindowMs(run.id);
       setRemaining(left);
-      if (left <= 0) finish(false);
+      if (left <= 0) void finish(false);
     }, 250);
     return () => clearInterval(timer);
   }, [finish, run]);
@@ -106,7 +111,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
     if (!run) return;
     // §6.10: при денежном режиме сдача подтверждается диалогом.
     if (run.mode === 'free') {
-      finish(false);
+      void finish(false);
       return;
     }
     Alert.alert(
@@ -114,13 +119,14 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
       `На кону ${formatMoney(run.stakeCents)}. Сдашься — сумма спишется.`,
       [
         { text: 'Продолжить испытание', style: 'cancel' },
-        { text: 'Сдаюсь', style: 'destructive', onPress: () => finish(false) },
+        { text: 'Сдаюсь', style: 'destructive', onPress: () => void finish(false) },
       ],
     );
   }, [finish, run]);
 
   if (!run) return null;
 
+  // §14.2: «на кону», не «ставка».
   const stakeLabel = {
     free: 'СЕРИЯ ПОД УГРОЗОЙ',
     stake: `${formatMoney(run.stakeCents)} НА КОНУ`,
@@ -133,6 +139,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
     shake: 'Тряхни телефон ×20',
   }[run.challengeType];
 
+  const now = new Date();
   const elapsed = 1 - remaining / CHALLENGE_WINDOW_MS;
 
   return (
@@ -146,24 +153,20 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
 
       <View style={styles.top}>
         <Text style={styles.time}>
-          {new Date().getHours().toString().padStart(2, '0')}:
-          {new Date().getMinutes().toString().padStart(2, '0')}
+          {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
         </Text>
-        <View style={styles.circleColumn}>
-          <VideoCircle progress={elapsed} />
-          <Text style={styles.recBadge}>● запись — не в демо</Text>
-        </View>
+        <CameraCircle ref={camera} progress={elapsed} recording={run.autoRecord} />
       </View>
 
       <Text style={[type.eyebrow, styles.challengeTitle]}>{challengeTitle}</Text>
 
       <View style={styles.challenge}>
         {run.challengeType === 'pattern' ? (
-          <PatternChallenge onSolved={() => finish(true)} />
+          <PatternChallenge onSolved={() => void finish(true)} />
         ) : run.challengeType === 'math' ? (
-          <MathChallenge onSolved={() => finish(true)} />
+          <MathChallenge onSolved={() => void finish(true)} />
         ) : (
-          <ShakeChallenge onSolved={() => finish(true)} />
+          <ShakeChallenge onSolved={() => void finish(true)} />
         )}
       </View>
 
@@ -173,7 +176,8 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
 }
 
 const styles = StyleSheet.create({
-  // §6.10: сплошной лаймовый фон — максимальный контраст, будит.
+  // §6.10: сплошной лаймовый фон — максимальный контраст, будит, и заодно
+  // работает источником света для фронтальной камеры.
   screen: {
     flex: 1,
     backgroundColor: colors.lime,
@@ -208,31 +212,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
   time: {
     ...type.display,
     fontSize: scale(62),
-  },
-  circleColumn: { alignItems: 'center', gap: 6 },
-  circleWrap: {
-    width: CIRCLE_SIZE,
-    height: CIRCLE_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circleInner: {
-    width: CIRCLE_SIZE - RING_STROKE * 4,
-    height: CIRCLE_SIZE - RING_STROKE * 4,
-    borderRadius: CIRCLE_SIZE,
-    backgroundColor: colors.limeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circleGlyph: { fontSize: 30 },
-  recBadge: {
-    fontFamily: fonts.bold,
-    fontSize: scale(10),
-    color: colors.inkSoft,
   },
 
   challengeTitle: { marginTop: spacing.xs },

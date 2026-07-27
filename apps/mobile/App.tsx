@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Navigation } from './src/app/navigation';
 import { Toast } from './src/components/animated';
 import { useAppFonts } from './src/design/fonts';
+import { requestNotificationPermission } from './src/features/alarm/notifications';
 import { colors } from './src/design/tokens';
 import { useStore } from './src/lib/store';
 
@@ -28,6 +29,12 @@ export default function App() {
   useEffect(() => {
     if (fontsReady) SplashScreen.hideAsync().catch(() => {});
   }, [fontsReady]);
+
+  // §6.2, экран 4: разрешение на уведомления спрашивается заранее — без него
+  // будильник не сможет позвать пользователя, когда приложение свёрнуто.
+  useEffect(() => {
+    requestNotificationPermission().catch(() => {});
+  }, []);
 
   // §5.4: тост живёт 2.5 секунды.
   useEffect(() => {

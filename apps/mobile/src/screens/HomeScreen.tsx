@@ -2,8 +2,11 @@
  * Дом. docs/SPEC.md §6.4.
  */
 
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { timeUntil } from '../features/alarm/schedule';
 
 import { Button } from '../components/Button';
 import { Mascot, MASCOT_NAMES, StreakFlame } from '../components/animated';
@@ -53,9 +56,22 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
   const profile = useStore((s) => s.profile);
   const alarms = useStore((s) => s.alarms);
   const startRun = useStore((s) => s.startRun);
+  const createTestAlarm = useStore((s) => s.createTestAlarm);
   const stage = useMascotStage();
 
-  const next = alarms.find((a) => a.isActive);
+  // Ближайший по времени, а не первый в списке: пользователь мог добавить
+  // будильник на более раннее утро.
+  const next = alarms
+    .filter((a) => a.isActive)
+    .sort((a, b) => a.nextFireAt - b.nextFireAt)[0];
+
+  // Обратный отсчёт до срабатывания обновляется раз в полминуты — чаще незачем,
+  // подпись показывает минуты.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const simulate = (alarmId: string): void => {
     startRun(alarmId);
@@ -108,7 +124,10 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
               <View style={styles.alarmText}>
                 <Text style={styles.alarmTime}>{formatTime(next.hour, next.minute)}</Text>
                 <Text style={type.caption}>{modeLabel(next)}</Text>
-                <Pill label={formatRepeatDays(next.repeatDays)} style={styles.alarmPill} />
+                <View style={styles.alarmPills}>
+                  <Pill label={formatRepeatDays(next.repeatDays)} />
+                  <Pill label={`через ${timeUntil(next.nextFireAt)}`} tone="lime" />
+                </View>
               </View>
             </Card>
           </Pressable>
@@ -128,21 +147,29 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
           onPress={() => navigation.navigate('AlarmCreate')}
         />
 
+        {/* §6.2, экран 5: обязательная проверка будильника. Пользователь должен
+            своими глазами убедиться, что телефон звонит, а не поверить на слово. */}
+        <Button
+          label="⏰ Проверить будильник (1 минута)"
+          variant="primary"
+          onPress={createTestAlarm}
+        />
+
         {next ? (
-          <>
-            <Button
-              label="▶︎ Промотать до утра"
-              variant="ghost"
-              onPress={() => simulate(next.id)}
-              style={styles.simulate}
-            />
-            {/* §4.1: настоящий будильник — нативный модуль и Фаза 0. Пока его нет,
-                кнопка обязана честно говорить, что это симуляция. */}
-            <Text style={[type.caption, styles.demoNote]}>
-              Демо: срабатывание запускается вручную. Настоящий будильник ещё не подключён.
-            </Text>
-          </>
+          <Button
+            label="▶︎ Промотать до утра"
+            variant="ghost"
+            onPress={() => simulate(next.id)}
+          />
         ) : null}
+
+        {/* §4.1: будильник звонит, пока приложение живо. Надёжное срабатывание
+            при выгруженном приложении — нативный модуль и Фаза 0. Пока его нет,
+            приложение обязано говорить об этом прямо. */}
+        <Text style={[type.caption, styles.demoNote]}>
+          Будильник звонит, пока приложение открыто или свёрнуто. При полностью
+          закрытом приложении разбудить он пока не может.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -192,7 +219,7 @@ const styles = StyleSheet.create({
   alarmIcon: { fontSize: 30 },
   alarmText: { flex: 1, gap: 3 },
   alarmTime: { ...type.h2, fontSize: scale(24) },
-  alarmPill: { marginTop: 4 },
+  alarmPills: { flexDirection: 'row', gap: spacing.sm, marginTop: 4, flexWrap: 'wrap' },
 
   empty: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xl },
   emptyIcon: { fontSize: 40 },
