@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
+import { ErrorBoundary } from './src/app/ErrorBoundary';
 import { Navigation } from './src/app/navigation';
 import { Toast } from './src/components/animated';
 import { useAppFonts } from './src/design/fonts';
@@ -49,7 +50,9 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <Navigation />
+        <ErrorBoundary label="app">
+          <Navigation />
+        </ErrorBoundary>
         {toast ? (
           <View style={styles.toastLayer} pointerEvents="box-none">
             <Toast message={toast} />

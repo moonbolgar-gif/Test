@@ -8,10 +8,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { timeUntil } from '../features/alarm/schedule';
 
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Button } from '../components/Button';
 import { Mascot, MASCOT_NAMES, StreakFlame } from '../components/animated';
+import { DarkEyebrow, Orb } from '../components/dark';
 import { Avatar, Card, Pill, StatCard } from '../components/primitives';
-import { colors, fonts, radius, spacing } from '../design/tokens';
+import { colors, darkSurface, fonts, onDark, radius, spacing } from '../design/tokens';
 import { scale, type } from '../design/type';
 import { WEEKDAY_LABELS, WEEK_ORDER, formatMoney, formatRepeatDays, formatTime, pluralDays } from '../lib/format';
 import { useMascotStage, useStore, type DemoAlarm } from '../lib/store';
@@ -90,13 +94,29 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
           </View>
         </View>
 
-        <Card tone="lime" style={styles.hero}>
-          <Text style={type.eyebrow}>ТЕКУЩАЯ СЕРИЯ ПОДЪЁМОВ</Text>
-          <Text style={styles.heroValue}>
-            {profile.streak} {pluralDays(profile.streak)}
-          </Text>
+        {/* Тёмный герой: главный показатель продукта должен читаться как статус,
+            а не как ещё одна карточка в списке. Остальной экран остаётся светлым
+            по §5.1. */}
+        <View style={styles.hero}>
+          <LinearGradient
+            colors={[darkSurface.top, darkSurface.mid, darkSurface.bottom]}
+            style={StyleSheet.absoluteFill}
+          />
+          <Orb color={colors.lime} size={200} left={-60} top={-70} opacity={0.2} duration={7800} />
+          <Orb color={colors.blue} size={150} left={210} top={40} opacity={0.13} duration={9800} />
+
+          <View style={styles.heroTop}>
+            <StreakFlame size={18} />
+            <DarkEyebrow>ТЕКУЩАЯ СЕРИЯ ПОДЪЁМОВ</DarkEyebrow>
+          </View>
+
+          <View style={styles.heroRow}>
+            <AnimatedNumber value={profile.streak} delay={120} style={styles.heroValue} />
+            <Text style={styles.heroUnit}>{pluralDays(profile.streak)}</Text>
+          </View>
+
           <WeekStrip done={profile.weekDone} />
-        </Card>
+        </View>
 
         <View style={styles.stats}>
           <StatCard value={formatMoney(profile.savedCents)} label="Сохранено" tone="good" />
@@ -192,21 +212,36 @@ const styles = StyleSheet.create({
   },
   streakPillText: { fontFamily: fonts.extrabold, fontSize: scale(14), color: colors.ink },
 
-  hero: { gap: spacing.sm },
-  heroValue: { ...type.display, fontSize: scale(46) },
+  hero: {
+    gap: spacing.sm,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    overflow: 'hidden',
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  heroValue: {
+    fontFamily: fonts.extrabold,
+    fontSize: scale(56),
+    letterSpacing: scale(56) * -0.04,
+    color: onDark.text,
+  },
+  heroUnit: { fontFamily: fonts.extrabold, fontSize: scale(20), color: colors.lime },
 
   week: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },
   weekCell: { alignItems: 'center', gap: 5 },
   weekBox: {
     width: 34, height: 34,
     borderRadius: 11,
-    backgroundColor: 'rgba(22,24,29,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekBoxDone: { backgroundColor: colors.ink },
-  weekCheck: { color: colors.lime, fontSize: scale(15), fontFamily: fonts.extrabold },
-  weekLabel: { fontFamily: fonts.bold, fontSize: scale(11), color: colors.ink, opacity: 0.6 },
+  weekBoxDone: { backgroundColor: colors.lime, borderColor: colors.lime },
+  weekCheck: { color: colors.ink, fontSize: scale(15), fontFamily: fonts.extrabold },
+  weekLabel: { fontFamily: fonts.bold, fontSize: scale(11), color: onDark.textFaint },
 
   stats: { flexDirection: 'row', gap: spacing.md },
 

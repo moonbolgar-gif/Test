@@ -4,28 +4,47 @@
  * §4.3: фронтальная камера, квадрат, без звука по умолчанию, максимум 60 секунд,
  * файл остаётся локально и не загружается никуда сам (§4.4).
  *
+ * Размер увеличен против §6.10 (104 pt) по решению владельца продукта: на 104 pt
+ * лицо неразличимо, и непонятно, пишется ли вообще что-то.
+ *
  * Подсветка лица: у фронтальной камеры iPhone нет вспышки, поэтому источником
- * света работает сам экран — лаймовый фон §6.10 плюс белый ореол вокруг кружка
- * и поднятая до максимума яркость. Ореол даёт блик в глазах, из-за которого лицо
- * читается даже в темноте, а не выглядит серым пятном.
+ * света работает экран. Тёплое белое кольцо вокруг кружка даёт направленный свет
+ * и блик в глазах — лицо читается даже в темноте. Тёплый оттенок, а не чистый
+ * белый, потому что холодный свет делает кожу землистой.
+ *
+ * Устойчивость: ни один метод здесь не бросает исключений наружу и не может
+ * подвесить вызывающий код. Экран испытания обязан завершиться независимо от
+ * того, что происходит с камерой.
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Svg, { Circle } from 'react-native-svg';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { colors, fonts } from '../../design/tokens';
 import { scale } from '../../design/type';
 
-const SIZE = 104;               // §6.10
-const RING_STROKE = 4;
-const HALO_SIZE = 168;
+const SIZE = 150;
+const RING_STROKE = 5;
+const GLOW_SIZE = 272;
 /** §4.3 — максимальная длина записи. */
 export const MAX_DURATION_SEC = 60;
+/** Сколько ждём файл, прежде чем считать запись потерянной. */
+const STOP_TIMEOUT_MS = 4000;
+
+/** Тёплый белый — на нём кожа выглядит живой, в отличие от чистого #FFF. */
+const LIGHT = '#FFF4DC';
 
 export interface CameraCircleHandle {
-  /** Возвращает путь к файлу или null, если записать не удалось. */
+  /** Никогда не бросает и не висит дольше STOP_TIMEOUT_MS. */
   stopAndSave: () => Promise<string | null>;
 }
 
@@ -34,21 +53,37 @@ interface Props {
   progress: number;
   /** §6.8 — настройка «Авто-запись кружка». */
   recording: boolean;
-  onStateChange?: (state: 'idle' | 'recording' | 'denied' | 'error') => void;
 }
 
 export const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle(
-  { progress, recording, onStateChange },
+  { progress, recording },
   ref,
 ) {
   const [permission, requestPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [active, setActive] = useState(false);
 
   const camera = useRef<CameraView>(null);
   // Промис записи резолвится только после stopRecording, поэтому храним его,
   // а не await-им на месте.
   const recordingPromise = useRef<Promise<{ uri: string } | undefined> | null>(null);
+
+  // Пульсация света: живой источник читается как «идёт запись» лучше,
+  // чем статичное пятно.
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+  }, [pulse]);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: 0.5 + pulse.value * 0.22,
+    transform: [{ scale: 1 + pulse.value * 0.04 }],
+  }));
 
   useEffect(() => {
     if (!permission) return;
@@ -59,53 +94,63 @@ export const CameraCircle = forwardRef<CameraCircleHandle, Props>(function Camer
 
   const granted = permission?.granted === true;
 
-  useEffect(() => {
-    onStateChange?.(
-      failed ? 'error' : !granted ? 'denied' : recording && ready ? 'recording' : 'idle',
-    );
-  }, [failed, granted, onStateChange, ready, recording]);
-
   // Запись стартует автоматически, как только камера готова (§4.3).
   useEffect(() => {
-    if (!granted || !ready || !recording || recordingPromise.current) return;
+    if (!granted || !ready || !recording || failed || recordingPromise.current) return;
     try {
-      recordingPromise.current =
-        camera.current?.recordAsync({ maxDuration: MAX_DURATION_SEC }) ?? null;
+      const promise = camera.current?.recordAsync({ maxDuration: MAX_DURATION_SEC });
+      if (!promise) return;
+      // Ошибку промиса гасим здесь: необработанный reject в RN всплывает
+      // как красный экран, хотя провал записи не должен ничего ломать.
+      recordingPromise.current = promise.catch(() => undefined);
+      setActive(true);
     } catch {
       setFailed(true);
     }
-  }, [granted, ready, recording]);
+  }, [failed, granted, ready, recording]);
 
   useImperativeHandle(ref, () => ({
     stopAndSave: async () => {
-      if (!recordingPromise.current) return null;
+      const promise = recordingPromise.current;
+      recordingPromise.current = null;
+      setActive(false);
+      if (!promise) return null;
+
       try {
         camera.current?.stopRecording();
-        const result = await recordingPromise.current;
+      } catch {
+        // Камера могла уже размонтироваться — файл всё равно попробуем забрать.
+      }
+
+      try {
+        // Гонка с таймаутом: если нативная сторона не отдаст файл, экран
+        // победы не должен ждать её вечно.
+        const result = await Promise.race([
+          promise,
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), STOP_TIMEOUT_MS)),
+        ]);
         return result?.uri ?? null;
       } catch {
         return null;
-      } finally {
-        recordingPromise.current = null;
       }
     },
   }));
 
   const r = (SIZE - RING_STROKE) / 2;
   const circumference = 2 * Math.PI * r;
-  const active = granted && recording && !failed;
+  const lighting = granted && recording && !failed;
 
   return (
     <View style={styles.wrap}>
-      {/* Ореол-подсветка. Три слоя вместо радиального градиента: в RN его нет
-          без дополнительной зависимости, а сложение полупрозрачных кругов даёт
-          достаточно мягкий край. */}
-      {active ? (
-        <>
-          <View style={[styles.halo, styles.haloOuter]} />
-          <View style={[styles.halo, styles.haloMid]} />
-          <View style={[styles.halo, styles.haloInner]} />
-        </>
+      {/* Подсветка. Три вложенных круга вместо радиального градиента: в RN его
+          нет без дополнительной зависимости, а сложение полупрозрачных слоёв
+          даёт достаточно мягкий спад. */}
+      {lighting ? (
+        <Animated.View style={[styles.glowWrap, glowStyle]} pointerEvents="none">
+          <View style={[styles.glow, styles.glowOuter]} />
+          <View style={[styles.glow, styles.glowMid]} />
+          <View style={[styles.glow, styles.glowInner]} />
+        </Animated.View>
       ) : null}
 
       <View style={styles.circle}>
@@ -131,7 +176,7 @@ export const CameraCircle = forwardRef<CameraCircleHandle, Props>(function Camer
       <Svg width={SIZE} height={SIZE} style={styles.ring} pointerEvents="none">
         <Circle
           cx={SIZE / 2} cy={SIZE / 2} r={r}
-          stroke={colors.ink} strokeOpacity={0.15} strokeWidth={RING_STROKE} fill="none"
+          stroke={colors.ink} strokeOpacity={0.14} strokeWidth={RING_STROKE} fill="none"
         />
         <Circle
           cx={SIZE / 2} cy={SIZE / 2} r={r}
@@ -143,31 +188,49 @@ export const CameraCircle = forwardRef<CameraCircleHandle, Props>(function Camer
         />
       </Svg>
 
-      <Text style={styles.badge}>
-        {failed
-          ? 'камера недоступна'
-          : !granted
-            ? 'нет доступа к камере'
-            : active
-              ? '● REC · битва пишется'
-              : 'запись выключена'}
-      </Text>
+      <View style={styles.badge}>
+        {active ? <View style={styles.recDot} /> : null}
+        <Text style={styles.badgeText}>
+          {failed
+            ? 'камера недоступна'
+            : !granted
+              ? 'нет доступа к камере'
+              : active
+                ? 'REC · битва пишется'
+                : recording
+                  ? 'запуск камеры…'
+                  : 'запись выключена'}
+        </Text>
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  wrap: { width: SIZE, alignItems: 'center', justifyContent: 'center' },
+  wrap: {
+    width: SIZE,
+    height: SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
 
-  halo: { position: 'absolute', backgroundColor: '#FFFFFF' },
-  haloOuter: {
-    width: HALO_SIZE, height: HALO_SIZE, borderRadius: HALO_SIZE / 2, opacity: 0.18,
+  glowWrap: {
+    position: 'absolute',
+    width: GLOW_SIZE,
+    height: GLOW_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  haloMid: {
-    width: HALO_SIZE * 0.82, height: HALO_SIZE * 0.82, borderRadius: HALO_SIZE / 2, opacity: 0.28,
+  glow: { position: 'absolute', backgroundColor: LIGHT },
+  glowOuter: {
+    width: GLOW_SIZE, height: GLOW_SIZE, borderRadius: GLOW_SIZE / 2, opacity: 0.16,
   },
-  haloInner: {
-    width: HALO_SIZE * 0.66, height: HALO_SIZE * 0.66, borderRadius: HALO_SIZE / 2, opacity: 0.4,
+  glowMid: {
+    width: GLOW_SIZE * 0.78, height: GLOW_SIZE * 0.78, borderRadius: GLOW_SIZE / 2, opacity: 0.3,
+  },
+  glowInner: {
+    width: GLOW_SIZE * 0.62, height: GLOW_SIZE * 0.62, borderRadius: GLOW_SIZE / 2, opacity: 0.55,
   },
 
   circle: {
@@ -180,15 +243,23 @@ const styles = StyleSheet.create({
   ring: { position: 'absolute' },
 
   placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  placeholderGlyph: { fontSize: 28 },
+  placeholderGlyph: { fontSize: 40 },
 
   badge: {
     position: 'absolute',
-    bottom: -18,
-    width: 160,
-    textAlign: 'center',
+    bottom: -26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.ink,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
+  recDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.bad },
+  badgeText: {
     fontFamily: fonts.bold,
-    fontSize: scale(10),
-    color: colors.inkSoft,
+    fontSize: scale(10.5),
+    color: colors.lime,
   },
 });

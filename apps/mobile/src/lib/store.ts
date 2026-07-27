@@ -136,6 +136,15 @@ interface State {
   startRun: (alarmId: string) => void;
   completeRun: (videoUri: string | null) => void;
   failRun: (videoUri: string | null) => void;
+  /**
+   * Дописывает видео к уже показанному итогу.
+   *
+   * Существует, чтобы переход на экран победы не ждал камеру: сначала
+   * показывается результат, файл подъезжает следом. Проверка runId нужна,
+   * потому что запись предыдущего срабатывания может доехать уже после
+   * начала следующего.
+   */
+  attachVideo: (runId: string, videoUri: string | null) => void;
   markShared: () => void;
   reactToEvent: (eventId: string) => void;
   nudge: (memberId: string) => void;
@@ -488,6 +497,12 @@ export const useStore = create<State>((set, get) => ({
       feed: squad ? [...squadFeed(squad), ...state.feed].slice(0, 40) : state.feed,
     }));
   },
+
+  attachVideo: (runId, videoUri) =>
+    set((state) => {
+      if (!videoUri || state.lastOutcome?.runId !== runId) return {};
+      return { lastOutcome: { ...state.lastOutcome, videoUri } };
+    }),
 
   markShared: () =>
     set((state) => ({

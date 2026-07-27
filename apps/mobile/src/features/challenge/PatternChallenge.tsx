@@ -244,6 +244,10 @@ const styles = StyleSheet.create({
   grid: {
     aspectRatio: 1,
     width: '100%',
+    // Ограничение по ширине: вместе с крупной камерой полноширинная сетка
+    // не помещается по высоте на большинстве экранов.
+    maxWidth: 300,
+    alignSelf: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.card,
     flexDirection: 'row',

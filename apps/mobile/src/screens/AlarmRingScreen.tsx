@@ -33,6 +33,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
   const run = useStore((s) => s.activeRun);
   const completeRun = useStore((s) => s.completeRun);
   const failRun = useStore((s) => s.failRun);
+  const attachVideo = useStore((s) => s.attachVideo);
 
   const [remaining, setRemaining] = useState(() => (run ? remainingWindowMs(run.id) : 0));
   const camera = useRef<CameraCircleHandle>(null);
@@ -75,25 +76,40 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
   }, []);
 
   const finish = useCallback(
-    async (won: boolean) => {
+    (won: boolean) => {
       if (settled.current) return;
       settled.current = true;
 
-      // Запись останавливается до перехода на следующий экран: файл нужен
-      // экрану победы, а камера в этот момент уже размонтируется.
-      const videoUri = await camera.current?.stopAndSave() ?? null;
+      const runId = run?.id ?? null;
 
+      // Переход происходит НЕМЕДЛЕННО, до всякой работы с камерой.
+      //
+      // Раньше здесь стоял `await camera.stopAndSave()`, и сбой нативной записи
+      // уносил с собой весь переход: пользователь решал испытание и оставался
+      // ни с чем. Цикл «испытание → итог» обязан замыкаться независимо от того,
+      // что происходит с камерой, поэтому файл догоняет результат позже
+      // (см. attachVideo).
       if (won) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        completeRun(videoUri);
+        completeRun(null);
         navigation.replace('Win');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        failRun(videoUri);
+        failRun(null);
         navigation.replace('Fail');
       }
+
+      // Запись останавливается фоном. Ошибки гасятся: провал записи не должен
+      // ни на что влиять — испытание уже засчитано.
+      const handle = camera.current;
+      if (handle && runId) {
+        handle
+          .stopAndSave()
+          .then((uri) => attachVideo(runId, uri))
+          .catch(() => {});
+      }
     },
-    [completeRun, failRun, navigation],
+    [attachVideo, completeRun, failRun, navigation, run],
   );
 
   // Окно отсчитывает demoServer (§4.2), экран только опрашивает остаток.
@@ -102,7 +118,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
     const timer = setInterval(() => {
       const left = remainingWindowMs(run.id);
       setRemaining(left);
-      if (left <= 0) void finish(false);
+      if (left <= 0) finish(false);
     }, 250);
     return () => clearInterval(timer);
   }, [finish, run]);
@@ -111,7 +127,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
     if (!run) return;
     // §6.10: при денежном режиме сдача подтверждается диалогом.
     if (run.mode === 'free') {
-      void finish(false);
+      finish(false);
       return;
     }
     Alert.alert(
@@ -119,7 +135,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
       `На кону ${formatMoney(run.stakeCents)}. Сдашься — сумма спишется.`,
       [
         { text: 'Продолжить испытание', style: 'cancel' },
-        { text: 'Сдаюсь', style: 'destructive', onPress: () => void finish(false) },
+        { text: 'Сдаюсь', style: 'destructive', onPress: () => finish(false) },
       ],
     );
   }, [finish, run]);
@@ -151,10 +167,13 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
         <Text style={styles.countdown}>⏳ {formatCountdown(remaining)}</Text>
       </View>
 
-      <View style={styles.top}>
-        <Text style={styles.time}>
-          {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
-        </Text>
+      <Text style={styles.time}>
+        {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
+      </Text>
+
+      {/* Камера по центру и крупно: на прежних 104 pt лицо было неразличимо,
+          и не читалось, идёт ли запись вообще. */}
+      <View style={styles.cameraBlock}>
         <CameraCircle ref={camera} progress={elapsed} recording={run.autoRecord} />
       </View>
 
@@ -162,11 +181,11 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
 
       <View style={styles.challenge}>
         {run.challengeType === 'pattern' ? (
-          <PatternChallenge onSolved={() => void finish(true)} />
+          <PatternChallenge onSolved={() => finish(true)} />
         ) : run.challengeType === 'math' ? (
-          <MathChallenge onSolved={() => void finish(true)} />
+          <MathChallenge onSolved={() => finish(true)} />
         ) : (
-          <ShakeChallenge onSolved={() => void finish(true)} />
+          <ShakeChallenge onSolved={() => finish(true)} />
         )}
       </View>
 
@@ -182,7 +201,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.lime,
     padding: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   header: {
     flexDirection: 'row',
@@ -208,17 +227,18 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
 
-  top: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
   time: {
     ...type.display,
-    fontSize: scale(62),
+    fontSize: scale(44),
+    textAlign: 'center',
+  },
+  cameraBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
 
-  challengeTitle: { marginTop: spacing.xs },
+  challengeTitle: { textAlign: 'center' },
   challenge: { flex: 1, justifyContent: 'center' },
 });

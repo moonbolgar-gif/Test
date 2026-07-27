@@ -11,6 +11,7 @@ import {
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { ErrorBoundary } from './ErrorBoundary';
 import { useAlarmWatcher } from '../features/alarm/useAlarmWatcher';
 import { useStore } from '../lib/store';
 
@@ -114,12 +115,25 @@ export function Navigation() {
           options={{ presentation: 'modal' }}
         />
 
-        {/* §6.10: экран срабатывания перекрывает всё и не закрывается жестом. */}
+        {/* §6.10: экран срабатывания перекрывает всё и не закрывается жестом.
+            Отдельная граница ошибок: здесь цена сбоя выше всего — пользователь
+            не должен остаться без ответа, засчитано испытание или нет. */}
         <Stack.Screen
           name="AlarmRing"
-          component={AlarmRingScreen}
           options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
-        />
+        >
+          {(props) => (
+            <ErrorBoundary
+              label="alarm-ring"
+              onReset={() => {
+                useStore.getState().failRun(null);
+                props.navigation.replace('Fail');
+              }}
+            >
+              <AlarmRingScreen {...props} />
+            </ErrorBoundary>
+          )}
+        </Stack.Screen>
 
         {/* Итог срабатывания тоже не закрывается свайпом: с него уходят кнопкой. */}
         <Stack.Screen name="Win" component={WinScreen} options={{ gestureEnabled: false }} />
