@@ -1,0 +1,203 @@
+/**
+ * Дом. docs/SPEC.md §6.4.
+ */
+
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { Button } from '../components/Button';
+import { Mascot, MASCOT_NAMES, StreakFlame } from '../components/animated';
+import { Avatar, Card, Pill, StatCard } from '../components/primitives';
+import { colors, fonts, radius, spacing } from '../design/tokens';
+import { scale, type } from '../design/type';
+import { WEEKDAY_LABELS, WEEK_ORDER, formatMoney, formatRepeatDays, formatTime, pluralDays } from '../lib/format';
+import { useMascotStage, useStore, type DemoAlarm } from '../lib/store';
+
+/** Недельная полоса Пн–Вс (§6.4). */
+function WeekStrip({ done }: { done: number[] }) {
+  return (
+    <View style={styles.week}>
+      {WEEK_ORDER.map((day) => {
+        const isDone = done.includes(day);
+        return (
+          <View key={day} style={styles.weekCell}>
+            <View style={[styles.weekBox, isDone ? styles.weekBoxDone : null]}>
+              {isDone ? <Text style={styles.weekCheck}>✓</Text> : null}
+            </View>
+            <Text style={styles.weekLabel}>{WEEKDAY_LABELS[day]}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function modeLabel(alarm: DemoAlarm): string {
+  const challenge = {
+    pattern: 'Графический ключ',
+    math: '3 примера',
+    shake: 'Тряска ×20',
+  }[alarm.challengeType];
+
+  // §14.2: «на кону», не «ставка».
+  const stake = {
+    free: 'Серия на кону',
+    stake: `На кону ${formatMoney(alarm.stakeCents)}`,
+    squad: `Командный челлендж ${formatMoney(alarm.stakeCents)}`,
+  }[alarm.mode];
+
+  return `${stake} · ${challenge}`;
+}
+
+export function HomeScreen({ navigation }: { navigation: { navigate: (r: string, p?: object) => void } }) {
+  const profile = useStore((s) => s.profile);
+  const alarms = useStore((s) => s.alarms);
+  const startRun = useStore((s) => s.startRun);
+  const stage = useMascotStage();
+
+  const next = alarms.find((a) => a.isActive);
+
+  const simulate = (alarmId: string): void => {
+    startRun(alarmId);
+    navigation.navigate('AlarmRing');
+  };
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Avatar id={profile.id} name={profile.name} size={40} />
+          <Text style={[type.title, styles.greeting]}>Доброе утро, {profile.name}</Text>
+          <View style={styles.streakPill}>
+            <StreakFlame size={15} />
+            <Text style={styles.streakPillText}>{profile.streak}</Text>
+          </View>
+        </View>
+
+        <Card tone="lime" style={styles.hero}>
+          <Text style={type.eyebrow}>ТЕКУЩАЯ СЕРИЯ ПОДЪЁМОВ</Text>
+          <Text style={styles.heroValue}>
+            {profile.streak} {pluralDays(profile.streak)}
+          </Text>
+          <WeekStrip done={profile.weekDone} />
+        </Card>
+
+        <View style={styles.stats}>
+          <StatCard value={formatMoney(profile.savedCents)} label="Сохранено" tone="good" />
+          <StatCard value={formatMoney(profile.lostCents)} label="Потеряно во сне" tone="bad" />
+        </View>
+
+        <Card style={styles.mascotCard}>
+          <Mascot stage={stage} size={44} />
+          <View style={styles.mascotText}>
+            <Text style={type.label}>{MASCOT_NAMES[stage - 1]}</Text>
+            <Text style={type.caption}>
+              {profile.isPremium
+                ? 'Маскот растёт вместе с твоей серией'
+                : 'Эволюция маскота — в RISE+'}
+            </Text>
+          </View>
+        </Card>
+
+        <Text style={[type.eyebrow, styles.sectionTitle]}>ЗАВТРАШНИЙ БУДИЛЬНИК</Text>
+
+        {next ? (
+          <Pressable onPress={() => navigation.navigate('AlarmCreate')}>
+            <Card style={styles.alarmCard}>
+              <Text style={styles.alarmIcon}>⏰</Text>
+              <View style={styles.alarmText}>
+                <Text style={styles.alarmTime}>{formatTime(next.hour, next.minute)}</Text>
+                <Text style={type.caption}>{modeLabel(next)}</Text>
+                <Pill label={formatRepeatDays(next.repeatDays)} style={styles.alarmPill} />
+              </View>
+            </Card>
+          </Pressable>
+        ) : (
+          <Card style={styles.empty}>
+            <Text style={styles.emptyIcon}>🌙</Text>
+            <Text style={type.label}>Пока ни одного будильника</Text>
+            <Text style={[type.caption, styles.emptyText]}>
+              Поставь первый — и серия начнётся завтра утром.
+            </Text>
+          </Card>
+        )}
+
+        <Button
+          label="+ Новый будильник"
+          variant="lime"
+          onPress={() => navigation.navigate('AlarmCreate')}
+        />
+
+        {next ? (
+          <>
+            <Button
+              label="▶︎ Промотать до утра"
+              variant="ghost"
+              onPress={() => simulate(next.id)}
+              style={styles.simulate}
+            />
+            {/* §4.1: настоящий будильник — нативный модуль и Фаза 0. Пока его нет,
+                кнопка обязана честно говорить, что это симуляция. */}
+            <Text style={[type.caption, styles.demoNote]}>
+              Демо: срабатывание запускается вручную. Настоящий будильник ещё не подключён.
+            </Text>
+          </>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
+
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  greeting: { flex: 1, fontSize: scale(16) },
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  streakPillText: { fontFamily: fonts.extrabold, fontSize: scale(14), color: colors.ink },
+
+  hero: { gap: spacing.sm },
+  heroValue: { ...type.display, fontSize: scale(46) },
+
+  week: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },
+  weekCell: { alignItems: 'center', gap: 5 },
+  weekBox: {
+    width: 34, height: 34,
+    borderRadius: 11,
+    backgroundColor: 'rgba(22,24,29,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekBoxDone: { backgroundColor: colors.ink },
+  weekCheck: { color: colors.lime, fontSize: scale(15), fontFamily: fonts.extrabold },
+  weekLabel: { fontFamily: fonts.bold, fontSize: scale(11), color: colors.ink, opacity: 0.6 },
+
+  stats: { flexDirection: 'row', gap: spacing.md },
+
+  mascotCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  mascotText: { flex: 1, gap: 2 },
+
+  sectionTitle: { marginTop: spacing.xs },
+
+  alarmCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  alarmIcon: { fontSize: 30 },
+  alarmText: { flex: 1, gap: 3 },
+  alarmTime: { ...type.h2, fontSize: scale(24) },
+  alarmPill: { marginTop: 4 },
+
+  empty: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xl },
+  emptyIcon: { fontSize: 40 },
+  emptyText: { textAlign: 'center' },
+
+  simulate: { marginTop: spacing.xs },
+  demoNote: { textAlign: 'center', paddingHorizontal: spacing.md },
+});
