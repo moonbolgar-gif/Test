@@ -1,11 +1,13 @@
 /**
  * Экран победы. docs/SPEC.md §6.12.
  *
- * Это эмоциональный пик продукта: единственный момент, когда пользователь
- * чувствует, что усилие окупилось. Поэтому итог не сворачивается в одну строку,
- * а разворачивается по частям — серия, сохранённые деньги, поинты, дерево,
- * результат команды. Каждый блок появляется отдельно, чтобы взгляд успевал
- * на нём остановиться.
+ * Эмоциональный пик продукта — единственный момент, когда усилие окупается.
+ * Поэтому итог не сворачивается в строку, а разворачивается по частям: серия,
+ * сохранённые деньги, награды, утро команды. Каждый блок появляется отдельно,
+ * чтобы взгляд успевал на нём остановиться.
+ *
+ * Тёмная подача (§5.1 + решение владельца продукта): событие должно
+ * отличаться от рутины. Дом и Команда остаются светлыми.
  *
  * Чего не хватает до §4.3: композитинга — слои живут поверх видео в интерфейсе,
  * но не вплавлены в файл. Это `RiseVideoModule` либо ffmpeg, Фаза 3.
@@ -21,10 +23,19 @@ import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Button } from '../components/Button';
 import { Confetti, StreakFlame } from '../components/animated';
-import { Avatar, Card } from '../components/primitives';
-import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
+import {
+  DarkBody,
+  DarkCaption,
+  DarkEyebrow,
+  DarkLabel,
+  DarkSurface,
+  DarkTitle,
+  GlassCard,
+} from '../components/dark';
+import { Avatar } from '../components/primitives';
+import { colors, fonts, onDark, radius, shadow, spacing } from '../design/tokens';
 import { stagger } from '../design/motion';
-import { scale, type } from '../design/type';
+import { scale } from '../design/type';
 import { formatMoney, pluralDays } from '../lib/format';
 import { useStore } from '../lib/store';
 
@@ -74,8 +85,8 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
   const markShared = useStore((s) => s.markShared);
   const [shareBusy, setShareBusy] = useState(false);
 
-  // Тактильная волна в такт появлению блоков — §5.5 требует отдачи на успех,
-  // а один импульс на длинном экране теряется.
+  // §5.5: тактильная волна в такт появлению блоков. Один импульс на длинном
+  // экране теряется, поэтому их два.
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const second = setTimeout(
@@ -114,141 +125,141 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Confetti />
+    <DarkSurface tone="win">
+      <SafeAreaView style={styles.screen}>
+        <Confetti />
 
-      <Animated.ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View entering={ZoomIn.delay(stagger(0)).springify()} style={styles.headline}>
-          <Text style={styles.emoji}>🎉</Text>
-          <Text style={[type.eyebrow, styles.eyebrow]}>ТЫ ПОБЕДИЛ СОН</Text>
-          <Text style={[type.h1, styles.title]}>{title}</Text>
-        </Animated.View>
+        <Animated.ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View entering={ZoomIn.delay(stagger(0)).springify()} style={styles.headline}>
+            <Text style={styles.emoji}>🎉</Text>
+            <DarkEyebrow color={colors.good}>ТЫ ПОБЕДИЛ СОН</DarkEyebrow>
+            <DarkTitle>{title}</DarkTitle>
+          </Animated.View>
 
-        {/* Серия — главный счётчик экрана. Досчитывается от прежнего значения,
-            чтобы был виден именно прирост, а не просто число. */}
-        <Animated.View entering={FadeInDown.delay(stagger(1)).springify()}>
-          <Card tone="lime" style={styles.streakCard}>
-            <View style={styles.streakTop}>
-              <StreakFlame size={26} />
-              <Text style={type.eyebrow}>СЕРИЯ ПОДЪЁМОВ</Text>
-            </View>
-            <View style={styles.streakRow}>
-              <AnimatedNumber
-                value={outcome.streakAfter}
-                from={outcome.streakBefore}
-                delay={420}
-                style={styles.streakValue}
-              />
-              <Text style={styles.streakUnit}>{pluralDays(outcome.streakAfter)}</Text>
-            </View>
-            <Text style={type.body}>
-              {outcome.streakAfter === 1
-                ? 'Первый день. Дальше будет проще — и сложнее одновременно.'
-                : outcome.streakAfter % 7 === 0
-                  ? `Ровно ${outcome.streakAfter / 7} недел${outcome.streakAfter === 7 ? 'я' : 'и'} без единого пропуска.`
-                  : `День ${outcome.streakAfter}. Огонёк горит, не дай ему погаснуть.`}
-            </Text>
-          </Card>
-        </Animated.View>
-
-        {/* §6.12: при денежном режиме прямо говорим, что деньги остались. */}
-        {isMoneyMode ? (
-          <Animated.View entering={FadeInDown.delay(stagger(2)).springify()}>
-            <Card style={styles.moneyCard}>
-              <View style={styles.moneyIcon}>
-                <Text style={styles.moneyGlyph}>💚</Text>
+          {/* Серия — главный счётчик экрана. Досчитывается от прежнего значения,
+              чтобы был виден именно прирост, а не просто число. */}
+          <Animated.View entering={FadeInDown.delay(stagger(1)).springify()}>
+            <GlassCard accent style={styles.streakCard}>
+              <View style={styles.streakTop}>
+                <StreakFlame size={24} />
+                <DarkEyebrow>СЕРИЯ ПОДЪЁМОВ</DarkEyebrow>
               </View>
-              <View style={styles.moneyText}>
-                <Text style={type.eyebrow}>ДЕНЬГИ ОСТАЛИСЬ У ТЕБЯ</Text>
+              <View style={styles.streakRow}>
                 <AnimatedNumber
-                  value={outcome.stakeCents}
-                  delay={620}
-                  format={formatMoney}
-                  style={styles.moneyValue}
+                  value={outcome.streakAfter}
+                  from={outcome.streakBefore}
+                  delay={420}
+                  style={styles.streakValue}
                 />
-                <Text style={type.caption}>
-                  Списан только сервисный сбор. Сама сумма никуда не ушла.
-                </Text>
+                <Text style={styles.streakUnit}>{pluralDays(outcome.streakAfter)}</Text>
               </View>
-            </Card>
+              <DarkBody>
+                {outcome.streakAfter === 1
+                  ? 'Первый день. Дальше будет проще — и сложнее одновременно.'
+                  : outcome.streakAfter % 7 === 0
+                    ? `Ровно ${outcome.streakAfter / 7} недел${outcome.streakAfter === 7 ? 'я' : 'и'} без единого пропуска.`
+                    : `День ${outcome.streakAfter}. Огонёк горит, не дай ему погаснуть.`}
+              </DarkBody>
+            </GlassCard>
           </Animated.View>
-        ) : null}
 
-        {/* Награды за подъём: поинты, дерево, ваучер. */}
-        <Animated.View entering={FadeInDown.delay(stagger(3)).springify()} style={styles.rewards}>
-          <RewardTile
-            icon="⚡️"
-            value={`+${outcome.pointsEarned}`}
-            label={profile.isPremium ? 'поинтов · ×1.5' : 'поинтов'}
-          />
-          <RewardTile
-            icon="🌳"
-            value={outcome.treeEarned ? '+1' : `${profile.trees}`}
-            label={outcome.treeEarned ? 'новое дерево' : 'деревьев'}
-            highlight={outcome.treeEarned}
-          />
-        </Animated.View>
+          {/* §6.12: при денежном режиме прямо говорим, что деньги остались. */}
+          {isMoneyMode ? (
+            <Animated.View entering={FadeInDown.delay(stagger(2)).springify()}>
+              <GlassCard style={styles.moneyCard}>
+                <View style={styles.moneyIcon}>
+                  <Text style={styles.moneyGlyph}>💚</Text>
+                </View>
+                <View style={styles.moneyText}>
+                  <DarkEyebrow color={colors.good}>ДЕНЬГИ ОСТАЛИСЬ У ТЕБЯ</DarkEyebrow>
+                  <AnimatedNumber
+                    value={outcome.stakeCents}
+                    delay={620}
+                    format={formatMoney}
+                    style={styles.moneyValue}
+                  />
+                  <DarkCaption>
+                    Списан только сервисный сбор. Сама сумма никуда не ушла.
+                  </DarkCaption>
+                </View>
+              </GlassCard>
+            </Animated.View>
+          ) : null}
 
-        {/* §6.6 — итог командного челленджа. */}
-        {outcome.squad ? (
-          <Animated.View entering={FadeInDown.delay(stagger(4)).springify()}>
-            <Card style={styles.squadCard}>
-              <Text style={type.eyebrow}>УТРО КОМАНДЫ</Text>
+          <Animated.View entering={FadeInDown.delay(stagger(3)).springify()} style={styles.rewards}>
+            <RewardTile
+              icon="⚡️"
+              value={`+${outcome.pointsEarned}`}
+              label={profile.isPremium ? 'поинтов · ×1.5' : 'поинтов'}
+            />
+            <RewardTile
+              icon="🌳"
+              value={outcome.treeEarned ? '+1' : `${profile.trees}`}
+              label={outcome.treeEarned ? 'новое дерево' : 'деревьев'}
+              highlight={outcome.treeEarned}
+            />
+          </Animated.View>
 
-              {outcome.squad.members.map((member) => (
-                <View key={member.id} style={styles.squadRow}>
-                  <Avatar id={member.id} name={member.name} size={34} dimmed={!member.wokeUp} />
-                  <View style={styles.squadText}>
-                    <Text style={type.label}>{member.name}</Text>
-                    <Text style={type.caption}>
-                      {member.wokeUp
-                        ? `встал в ${member.wokeUpAt}`
-                        : `проспал · взнос ${formatMoney(member.forfeitedCents)} в фонд`}
+          {/* §6.6 — итог командного челленджа. */}
+          {outcome.squad ? (
+            <Animated.View entering={FadeInDown.delay(stagger(4)).springify()}>
+              <GlassCard style={styles.squadCard}>
+                <DarkEyebrow>УТРО КОМАНДЫ</DarkEyebrow>
+
+                {outcome.squad.members.map((member) => (
+                  <View key={member.id} style={styles.squadRow}>
+                    <Avatar id={member.id} name={member.name} size={34} dimmed={!member.wokeUp} />
+                    <View style={styles.squadText}>
+                      <DarkLabel>{member.name}</DarkLabel>
+                      <DarkCaption>
+                        {member.wokeUp
+                          ? `встал в ${member.wokeUpAt}`
+                          : `проспал · взнос ${formatMoney(member.forfeitedCents)} в фонд`}
+                      </DarkCaption>
+                    </View>
+                    <Text style={member.wokeUp ? styles.squadOk : styles.squadFail}>
+                      {member.wokeUp ? '✓' : '😴'}
                     </Text>
                   </View>
-                  <Text style={member.wokeUp ? styles.squadOk : styles.squadFail}>
-                    {member.wokeUp ? '✓' : '😴'}
-                  </Text>
-                </View>
-              ))}
+                ))}
 
-              {outcome.voucherEarned ? (
-                <View style={styles.voucherBox}>
-                  <Text style={styles.voucherGlyph}>🎟️</Text>
-                  <View style={styles.voucherText}>
-                    <Text style={type.label}>
-                      Награда {formatMoney(outcome.voucherEarned.amountCents)} — в профиле
-                    </Text>
-                    {/* §14.1: это принципиальная формулировка, а не юридическая
-                        придирка. Деньги проспавших уходят в обезличенный фонд,
-                        награду выдаёт платформа из своего. */}
-                    <Text style={type.caption}>
-                      Платформа выдаёт её из фонда наград. Это не деньги тех, кто проспал.
-                    </Text>
+                {outcome.voucherEarned ? (
+                  <View style={styles.voucherBox}>
+                    <Text style={styles.voucherGlyph}>🎟️</Text>
+                    <View style={styles.voucherText}>
+                      <DarkLabel>
+                        Награда {formatMoney(outcome.voucherEarned.amountCents)} — в профиле
+                      </DarkLabel>
+                      {/* §14.1: принципиальная формулировка, а не юридическая
+                          придирка. Деньги проспавших уходят в обезличенный фонд,
+                          награду выдаёт платформа из своего. */}
+                      <DarkCaption>
+                        Платформа выдаёт её из фонда наград. Это не деньги тех, кто проспал.
+                      </DarkCaption>
+                    </View>
                   </View>
-                </View>
-              ) : null}
-            </Card>
+                ) : null}
+              </GlassCard>
+            </Animated.View>
+          ) : null}
+
+          <Animated.View entering={FadeInDown.delay(stagger(5)).springify()} style={styles.shareBlock}>
+            <ShareCardPreview streak={outcome.streakAfter} videoUri={outcome.videoUri} />
+            <DarkCaption>
+              {outcome.videoUri ? 'Готово к Stories · 9:16' : 'Видео не записано · 9:16'}
+            </DarkCaption>
           </Animated.View>
-        ) : null}
+        </Animated.ScrollView>
 
-        {/* Карточка для Stories. */}
-        <Animated.View entering={FadeInDown.delay(stagger(5)).springify()} style={styles.shareBlock}>
-          <ShareCardPreview streak={outcome.streakAfter} videoUri={outcome.videoUri} />
-          <Text style={[type.caption, styles.shareNote]}>
-            {outcome.videoUri ? 'Готово к Stories · 9:16' : 'Видео не записано · 9:16'}
-          </Text>
+        <Animated.View entering={FadeIn.delay(stagger(6))} style={styles.actions}>
+          <Button label="📲 Поделиться" variant="lime" onPress={share} loading={shareBusy} />
+          <Button label="На главную" variant="outlineDark" onPress={() => navigation.popToTop()} />
         </Animated.View>
-      </Animated.ScrollView>
-
-      <Animated.View entering={FadeIn.delay(stagger(6))} style={styles.actions}>
-        <Button label="📲 Поделиться" variant="lime" onPress={share} loading={shareBusy} />
-        <Button label="На главную" variant="ghost" onPress={() => navigation.popToTop()} />
-      </Animated.View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </DarkSurface>
   );
 }
 
@@ -265,24 +276,32 @@ function RewardTile({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.lg },
 
   headline: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
   emoji: { fontSize: 52 },
-  eyebrow: { color: colors.good },
-  title: { textAlign: 'center' },
 
   streakCard: { gap: spacing.sm },
   streakTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   streakRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  streakValue: { ...type.display, fontSize: scale(66) },
-  streakUnit: { ...type.h2, fontSize: scale(20) },
+  streakValue: {
+    fontFamily: fonts.extrabold,
+    fontSize: scale(66),
+    lineHeight: scale(66) * 1.02,
+    letterSpacing: scale(66) * -0.04,
+    color: onDark.text,
+  },
+  streakUnit: {
+    fontFamily: fonts.extrabold,
+    fontSize: scale(20),
+    color: colors.lime,
+  },
 
   moneyCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   moneyIcon: {
     width: 52, height: 52, borderRadius: radius.icon,
-    backgroundColor: '#E4F7ED',
+    backgroundColor: 'rgba(52,199,123,0.16)',
     alignItems: 'center', justifyContent: 'center',
   },
   moneyGlyph: { fontSize: 24 },
@@ -297,18 +316,20 @@ const styles = StyleSheet.create({
   rewards: { flexDirection: 'row', gap: spacing.md },
   tile: {
     flex: 1,
-    backgroundColor: colors.card,
+    backgroundColor: onDark.glass,
+    borderWidth: 1,
+    borderColor: onDark.glassBorder,
     borderRadius: radius.card,
     padding: spacing.md,
     gap: 2,
-    ...shadow.sm,
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
-  tileHighlight: { borderColor: colors.lime, backgroundColor: colors.limeSoft },
+  tileHighlight: {
+    borderColor: 'rgba(214,248,76,0.45)',
+    backgroundColor: 'rgba(214,248,76,0.10)',
+  },
   tileIcon: { fontSize: 22 },
-  tileValue: { fontFamily: fonts.extrabold, fontSize: scale(24), color: colors.ink },
-  tileLabel: { fontFamily: fonts.medium, fontSize: scale(12), color: colors.inkFaint },
+  tileValue: { fontFamily: fonts.extrabold, fontSize: scale(24), color: onDark.text },
+  tileLabel: { fontFamily: fonts.medium, fontSize: scale(12), color: onDark.textFaint },
 
   squadCard: { gap: spacing.sm },
   squadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -319,7 +340,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.limeSoft,
+    backgroundColor: 'rgba(214,248,76,0.10)',
     borderRadius: radius.cardSm,
     padding: spacing.md,
     marginTop: spacing.xs,
@@ -331,7 +352,7 @@ const styles = StyleSheet.create({
   shareCard: {
     width: 176,
     aspectRatio: 9 / 16,
-    backgroundColor: colors.black,
+    backgroundColor: '#000',
     borderRadius: radius.cardSm,
     overflow: 'hidden',
     ...shadow.lg,
@@ -369,7 +390,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold, fontSize: scale(11),
     color: colors.card, lineHeight: 15,
   },
-  shareNote: {},
 
   actions: { gap: spacing.sm, padding: spacing.lg, paddingTop: spacing.sm },
+  secondary: { borderColor: onDark.glassBorder },
 });

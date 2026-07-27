@@ -23,7 +23,7 @@ import Animated, {
 import { colors, fonts, radius, shadow, spacing } from '../design/tokens';
 import { scale } from '../design/type';
 
-export type ButtonVariant = 'primary' | 'lime' | 'ghost' | 'outline';
+export type ButtonVariant = 'primary' | 'lime' | 'ghost' | 'outline' | 'outlineDark';
 
 interface Props {
   label: string;
@@ -39,6 +39,8 @@ const PALETTE: Record<ButtonVariant, { bg: string; fg: string; border?: string }
   lime: { bg: colors.lime, fg: colors.ink },
   ghost: { bg: colors.card, fg: colors.ink },
   outline: { bg: 'transparent', fg: colors.ink, border: colors.line2 },
+  // Для тёмных экранов-событий: на тёмном фоне чернильный текст нечитаем.
+  outlineDark: { bg: 'transparent', fg: colors.card, border: 'rgba(255,255,255,0.18)' },
 };
 
 export function Button({

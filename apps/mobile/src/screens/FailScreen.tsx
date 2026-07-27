@@ -1,18 +1,34 @@
 /**
  * Экран провала. docs/SPEC.md §6.13.
  *
- * Тон по §16: без унижения, с надеждой. Ссылка «Оспорить списание» обязательна
- * (§14.3) — без неё продукт теряет доверие, а вместе с ним пользователей.
+ * Тон по §16: без унижения, с надеждой. Потеря должна ощущаться — иначе вся
+ * механика продукта не работает, — но экран не должен добивать. Поэтому цифра
+ * потери названа прямо, а рядом сразу стоит «завтра можно начать заново».
+ *
+ * Ссылка «Оспорить списание» обязательна (§14.3): без неё продукт теряет доверие,
+ * а вместе с ним пользователей.
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { Button } from '../components/Button';
-import { Card } from '../components/primitives';
-import { colors, fonts, spacing } from '../design/tokens';
-import { scale, type } from '../design/type';
+import {
+  DarkBody,
+  DarkCaption,
+  DarkEyebrow,
+  DarkLabel,
+  DarkSurface,
+  DarkTitle,
+  GlassCard,
+} from '../components/dark';
+import { Avatar } from '../components/primitives';
+import { colors, fonts, onDark, radius, spacing } from '../design/tokens';
+import { stagger } from '../design/motion';
+import { scale } from '../design/type';
 import { fetchServiceFee, fetchStakeSplit, splitStake } from '../lib/demoServer';
 import { formatMoney, pluralDays } from '../lib/format';
 import { useStore } from '../lib/store';
@@ -31,6 +47,12 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
   const stakeCents = outcome?.stakeCents ?? 0;
   const isMoneyMode = outcome?.mode !== 'free' && stakeCents > 0;
 
+  // §5.5: провал — notificationError, один раз. Повторять не нужно, экран
+  // и без того неприятный.
+  useEffect(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  }, []);
+
   // §8.2: доли приходят с сервера, а не заданы в компоненте.
   useEffect(() => {
     if (!isMoneyMode) return;
@@ -45,12 +67,8 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
     };
   }, [isMoneyMode, stakeCents]);
 
-  const title = isMoneyMode
-    ? `${formatMoney(stakeCents)} списано.`
-    : 'Серия обнулена.';
+  const title = isMoneyMode ? `${formatMoney(stakeCents)} списано.` : 'Серия обнулена.';
 
-  // §16: тон без унижения. Прежняя длина серии называется прямо — потеря
-  // должна ощущаться, иначе механика не работает, — но следом идёт надежда.
   const lost = outcome?.streakBefore ?? 0;
   const subtitle = lost > 0
     ? `Ты потерял серию из ${lost} ${pluralDays(lost)}. Завтра можно начать заново.`
@@ -59,113 +77,144 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
       : 'Завтра можно начать заново.';
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.content}>
-        <Text style={styles.emoji}>💸</Text>
-        <Text style={[type.eyebrow, styles.eyebrow]}>БУДИЛЬНИК ПОБЕДИЛ</Text>
-        <Text style={[type.h1, styles.title]}>{title}</Text>
-        <Text style={[type.body, styles.subtitle]}>{subtitle}</Text>
+    <DarkSurface tone="fail">
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Animated.View entering={FadeIn.delay(stagger(0)).duration(400)} style={styles.headline}>
+            <Text style={styles.emoji}>💸</Text>
+            <DarkEyebrow color={colors.bad}>БУДИЛЬНИК ПОБЕДИЛ</DarkEyebrow>
+            <DarkTitle>{title}</DarkTitle>
+            <View style={styles.subtitle}>
+              <DarkBody>{subtitle}</DarkBody>
+            </View>
+          </Animated.View>
 
-        {isMoneyMode ? (
-          <Card style={styles.receipt}>
-            {breakdown ? (
-              <>
-                <Row label="💚 Благотворительность" value={breakdown.charity} />
-                <Row label="🏢 Платформа" value={breakdown.platform} />
-                <Row label="🎁 Фонд наград" value={breakdown.reward_pool} />
-                <Row label="🌱 Сервисный сбор" value={breakdown.fee} />
-                <View style={styles.divider} />
-                <View style={styles.row}>
-                  <Text style={type.label}>Итого</Text>
-                  <Text style={[styles.total]}>
-                    −{formatMoney(stakeCents + breakdown.fee)}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <Text style={type.caption}>Загружаем разбивку…</Text>
-            )}
-          </Card>
-        ) : null}
+          {isMoneyMode ? (
+            <Animated.View entering={FadeInDown.delay(stagger(1)).springify()}>
+              <GlassCard style={styles.receipt}>
+                <DarkEyebrow>КУДА УШЛИ ДЕНЬГИ</DarkEyebrow>
+                {breakdown ? (
+                  <>
+                    <Row label="💚 Благотворительность" value={breakdown.charity} />
+                    <Row label="🏢 Платформа" value={breakdown.platform} />
+                    <Row label="🎁 Фонд наград" value={breakdown.reward_pool} />
+                    <Row label="🌱 Сервисный сбор" value={breakdown.fee} />
+                    <View style={styles.divider} />
+                    <View style={styles.row}>
+                      <DarkLabel>Итого</DarkLabel>
+                      <Text style={styles.total}>
+                        −{formatMoney(stakeCents + breakdown.fee)}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <DarkCaption>Загружаем разбивку…</DarkCaption>
+                )}
+              </GlassCard>
+            </Animated.View>
+          ) : null}
 
-        {/* §6.6: в командном режиме показываем, как утро прошло у остальных —
-            иначе непонятно, подвёл ли пользователь только себя. */}
-        {outcome?.squad ? (
-          <Card style={styles.squad}>
-            <Text style={type.eyebrow}>УТРО КОМАНДЫ</Text>
-            {outcome.squad.members.map((member) => (
-              <View key={member.id} style={styles.squadRow}>
-                <Text style={type.body}>
-                  {member.wokeUp ? '✓' : '😴'} {member.name}
-                </Text>
-                <Text style={type.caption}>
-                  {member.wokeUp
-                    ? `встал в ${member.wokeUpAt}`
-                    : `взнос ${formatMoney(member.forfeitedCents)} в фонд`}
-                </Text>
-              </View>
-            ))}
-          </Card>
-        ) : null}
+          {/* §6.6: в командном режиме показываем, как утро прошло у остальных —
+              иначе непонятно, подвёл ли пользователь только себя. */}
+          {outcome?.squad ? (
+            <Animated.View entering={FadeInDown.delay(stagger(2)).springify()}>
+              <GlassCard style={styles.squad}>
+                <DarkEyebrow>УТРО КОМАНДЫ</DarkEyebrow>
+                {outcome.squad.members.map((member) => (
+                  <View key={member.id} style={styles.squadRow}>
+                    <Avatar id={member.id} name={member.name} size={32} dimmed={!member.wokeUp} />
+                    <View style={styles.squadText}>
+                      <DarkLabel>{member.name}</DarkLabel>
+                      <DarkCaption>
+                        {member.wokeUp
+                          ? `встал в ${member.wokeUpAt}`
+                          : `проспал · взнос ${formatMoney(member.forfeitedCents)} в фонд`}
+                      </DarkCaption>
+                    </View>
+                    <Text style={member.wokeUp ? styles.ok : styles.fail}>
+                      {member.wokeUp ? '✓' : '😴'}
+                    </Text>
+                  </View>
+                ))}
+              </GlassCard>
+            </Animated.View>
+          ) : null}
 
-        {isMoneyMode ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              Alert.alert(
-                'Оспорить списание',
-                'В демо форма не отправляется. По §14.3 первое обращение в течение 30 дней одобряется автоматически.',
-              )
-            }
-          >
-            <Text style={styles.dispute}>Оспорить списание</Text>
-          </Pressable>
-        ) : null}
-      </View>
+          {isMoneyMode ? (
+            <Animated.View entering={FadeIn.delay(stagger(3))}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  Alert.alert(
+                    'Оспорить списание',
+                    'В демо форма не отправляется. По §14.3 первое обращение в течение '
+                    + '30 дней одобряется автоматически, а решение приходит за 72 часа.',
+                  )
+                }
+                style={styles.disputeButton}
+              >
+                <Text style={styles.dispute}>Оспорить списание</Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
+        </ScrollView>
 
-      <Button label="На главную" variant="primary" onPress={() => navigation.popToTop()} />
-    </SafeAreaView>
+        <Animated.View entering={FadeIn.delay(stagger(4))} style={styles.actions}>
+          <Button label="Завтра отыграюсь" variant="lime" onPress={() => navigation.popToTop()} />
+        </Animated.View>
+      </SafeAreaView>
+    </DarkSurface>
   );
 }
 
 function Row({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.row}>
-      <Text style={type.body}>{label}</Text>
-      <Text style={type.label}>{formatMoney(value)}</Text>
+      <DarkBody>{label}</DarkBody>
+      <DarkLabel>{formatMoney(value)}</DarkLabel>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
+  screen: { flex: 1 },
+  content: {
     padding: spacing.lg,
-    justifyContent: 'space-between',
+    gap: spacing.md,
+    flexGrow: 1,
+    justifyContent: 'center',
   },
-  content: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
-  emoji: { fontSize: 52 },
-  eyebrow: { color: colors.bad },
-  title: { textAlign: 'center' },
-  subtitle: { textAlign: 'center', marginBottom: spacing.md },
 
-  receipt: { width: '100%', gap: spacing.sm },
+  headline: { alignItems: 'center', gap: spacing.xs },
+  emoji: { fontSize: 52 },
+  subtitle: { paddingHorizontal: spacing.md, marginTop: 2 },
+
+  receipt: { gap: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  divider: { height: 1, backgroundColor: colors.line, marginVertical: spacing.xs },
+  divider: {
+    height: 1,
+    backgroundColor: onDark.glassBorder,
+    marginVertical: spacing.xs,
+  },
   total: {
     fontFamily: fonts.extrabold,
-    fontSize: scale(16),
+    fontSize: scale(17),
     color: colors.bad,
   },
 
+  squad: { gap: spacing.sm },
+  squadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  squadText: { flex: 1, gap: 1 },
+  ok: { fontSize: 15, color: colors.good },
+  fail: { fontSize: 15 },
+
+  disputeButton: { alignSelf: 'center', padding: spacing.sm },
   dispute: {
-    ...type.label,
-    color: colors.inkSoft,
+    fontFamily: fonts.bold,
+    fontSize: scale(14),
+    color: onDark.textSoft,
     textDecorationLine: 'underline',
-    marginTop: spacing.md,
   },
 
-  squad: { width: '100%', gap: spacing.sm, marginTop: spacing.sm },
-  squadRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  actions: { padding: spacing.lg, paddingTop: spacing.sm },
 });
