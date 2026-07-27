@@ -19,6 +19,10 @@ import { create } from 'zustand';
 import { mascotStageForStreak } from '../components/animated';
 import { nextFireAt } from '../features/alarm/schedule';
 import { cancelNotifications, scheduleAlarmChain } from '../features/alarm/notifications';
+import {
+  resolveSquadChallenge,
+  type SquadChallengeResult,
+} from '../features/team/squadResult';
 import { clearWindow, startWindow } from './demoServer';
 import { formatMoney } from './format';
 
@@ -97,6 +101,16 @@ interface Outcome {
   mode: AlarmMode;
   /** Путь к записанному видео, если запись велась (§4.3). */
   videoUri: string | null;
+  /** Насколько выросла серия за этот подъём — для празднования на §6.12. */
+  streakBefore: number;
+  streakAfter: number;
+  pointsEarned: number;
+  /** Дерево, засчитанное этим подъёмом (§7.5), если оно появилось. */
+  treeEarned: boolean;
+  /** Итог командного челленджа, если режим был squad (§6.6). */
+  squad: SquadChallengeResult | null;
+  /** Награда из фонда платформы, если она выдана (§14.1). */
+  voucherEarned: Voucher | null;
 }
 
 interface State {
@@ -110,7 +124,11 @@ interface State {
   feed: FeedEvent[];
   vouchers: Voucher[];
   toast: string | null;
+  onboardingDone: boolean;
 
+  finishOnboarding: () => void;
+  addFriend: (name: string) => void;
+  removeFriend: (id: string) => void;
   createAlarm: (alarm: NewAlarm) => void;
   /** §6.2, экран 5 — тестовый будильник через минуту. */
   createTestAlarm: () => void;
@@ -234,6 +252,40 @@ export const useStore = create<State>((set, get) => ({
   ],
 
   toast: null,
+  onboardingDone: false,
+
+  finishOnboarding: () => set({ onboardingDone: true }),
+
+  addFriend: (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const id = uid();
+    set((state) => ({
+      // §7.7: команда до 8 человек — бесплатно до 4, до 8 с RISE+.
+      members: state.members.length >= (state.profile.isPremium ? 8 : 7)
+        ? state.members
+        : [...state.members, { id, name: trimmed, streak: 0, wokeUpAt: null, nudgedToday: false }],
+      feed: [
+        {
+          id: uid(),
+          actorId: id,
+          actorName: trimmed,
+          text: 'вступил в команду',
+          ago: 'только что',
+          emoji: '👋',
+          reactions: 0,
+          reactedByMe: false,
+        },
+        ...state.feed,
+      ],
+      toast: state.members.length >= (state.profile.isPremium ? 8 : 7)
+        ? 'В команде максимум участников'
+        : `${trimmed} в команде 👋`,
+    }));
+  },
+
+  removeFriend: (id) =>
+    set((state) => ({ members: state.members.filter((m) => m.id !== id) })),
 
   createAlarm: (alarm) => {
     const id = uid();
@@ -314,18 +366,38 @@ export const useStore = create<State>((set, get) => ({
   },
 
   completeRun: (videoUri) => {
-    const { activeRun, profile } = get();
+    const { activeRun, profile, members } = get();
     if (!activeRun) return;
     clearWindow(activeRun.id);
 
     const totalWakes = profile.totalWakes + 1;
     const streak = profile.streak + 1;
     // §7.3: +10 за подъём вовремя, +20 если серия кратна 7.
-    const points = profile.points
-      + awardPoints(profile, 10)
+    const pointsEarned = awardPoints(profile, 10)
       + (streak % 7 === 0 ? awardPoints(profile, 20) : 0);
 
-    set({
+    const treesBefore = profile.trees;
+    const treesAfter = treesFor(totalWakes, profile.isPremium);
+
+    // §6.6: в командном режиме утро разыгрывается для всей команды.
+    const squad = activeRun.mode === 'squad'
+      ? resolveSquadChallenge(members, activeRun.stakeCents)
+      : null;
+
+    // §14.1: награду выдаёт платформа из своего фонда, а не проигравший —
+    // поэтому ваучер появляется за сам факт победы, а не за чужой проигрыш.
+    const voucher: Voucher | null = squad
+      ? {
+          id: uid(),
+          brand: 'Награда из фонда',
+          icon: '🎟️',
+          amountCents: squad.rewardCents,
+          code: `RISE-${Math.floor(1000 + Math.random() * 9000)}`,
+          revealed: false,
+        }
+      : null;
+
+    set((state) => ({
       activeRun: null,
       lastOutcome: {
         runId: activeRun.id,
@@ -333,27 +405,54 @@ export const useStore = create<State>((set, get) => ({
         stakeCents: activeRun.stakeCents,
         mode: activeRun.mode,
         videoUri,
+        streakBefore: profile.streak,
+        streakAfter: streak,
+        pointsEarned,
+        treeEarned: treesAfter > treesBefore,
+        squad,
+        voucherEarned: voucher,
       },
       profile: {
         ...profile,
         streak,
         bestStreak: Math.max(profile.bestStreak, streak),
         totalWakes,
-        points,
-        trees: treesFor(totalWakes, profile.isPremium),
+        points: profile.points + pointsEarned,
+        trees: treesAfter,
         // §8.1 шаг 3: сумма остаётся у пользователя.
         savedCents: profile.savedCents + activeRun.stakeCents,
         weekDone: [...new Set([...profile.weekDone, todayWeekday()])] as Weekday[],
       },
-    });
+      vouchers: voucher ? [voucher, ...state.vouchers] : state.vouchers,
+      // Итог утра отражается на команде: кто встал, кто проспал.
+      members: squad
+        ? state.members.map((member) => {
+            const result = squad.members.find((r) => r.id === member.id);
+            if (!result) return member;
+            return {
+              ...member,
+              wokeUpAt: result.wokeUpAt,
+              streak: result.wokeUp ? member.streak + 1 : 0,
+            };
+          })
+        : state.members,
+      squadStreak: squad
+        ? (squad.perfectRound ? state.squadStreak + 1 : 0)   // §7.7
+        : state.squadStreak,
+      feed: squad ? [...squadFeed(squad), ...state.feed].slice(0, 40) : state.feed,
+    }));
   },
 
   failRun: (videoUri) => {
-    const { activeRun, profile } = get();
+    const { activeRun, profile, members } = get();
     if (!activeRun) return;
     clearWindow(activeRun.id);
 
-    set({
+    const squad = activeRun.mode === 'squad'
+      ? resolveSquadChallenge(members, activeRun.stakeCents)
+      : null;
+
+    set((state) => ({
       activeRun: null,
       lastOutcome: {
         runId: activeRun.id,
@@ -361,13 +460,33 @@ export const useStore = create<State>((set, get) => ({
         stakeCents: activeRun.stakeCents,
         mode: activeRun.mode,
         videoUri,
+        streakBefore: profile.streak,
+        streakAfter: 0,
+        pointsEarned: 0,
+        treeEarned: false,
+        squad,
+        voucherEarned: null,
       },
       profile: {
         ...profile,
         streak: 0,                                    // §7.2
         lostCents: profile.lostCents + activeRun.stakeCents,
       },
-    });
+      // Проспал участник — командная серия рвётся (§7.7).
+      squadStreak: squad ? 0 : state.squadStreak,
+      members: squad
+        ? state.members.map((member) => {
+            const result = squad.members.find((r) => r.id === member.id);
+            if (!result) return member;
+            return {
+              ...member,
+              wokeUpAt: result.wokeUpAt,
+              streak: result.wokeUp ? member.streak + 1 : 0,
+            };
+          })
+        : state.members,
+      feed: squad ? [...squadFeed(squad), ...state.feed].slice(0, 40) : state.feed,
+    }));
   },
 
   markShared: () =>
@@ -416,6 +535,23 @@ export const useStore = create<State>((set, get) => ({
 
 function todayWeekday(): Weekday {
   return new Date().getDay() as Weekday;
+}
+
+/** Превращает итог команды в события ленты (§6.14). */
+function squadFeed(squad: SquadChallengeResult): FeedEvent[] {
+  return squad.members.map((member) => ({
+    id: uid(),
+    actorId: member.id,
+    actorName: member.name,
+    text: member.wokeUp
+      ? `встал в ${member.wokeUpAt}`
+      // §14.2: «взнос ушёл в фонд», а не «проиграл ставку».
+      : `проспал — взнос ${formatMoney(member.forfeitedCents)} ушёл в фонд`,
+    ago: 'только что',
+    emoji: member.wokeUp ? '👏' : '😴',
+    reactions: 0,
+    reactedByMe: false,
+  }));
 }
 
 /** §7.4 — стадия маскота по текущей серии. */

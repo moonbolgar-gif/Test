@@ -12,6 +12,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { useAlarmWatcher } from '../features/alarm/useAlarmWatcher';
+import { useStore } from '../lib/store';
 
 import { colors, fonts } from '../design/tokens';
 import { scale } from '../design/type';
@@ -20,12 +21,14 @@ import { AlarmRingScreen } from '../screens/AlarmRingScreen';
 import { FailScreen } from '../screens/FailScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ImpactScreen } from '../screens/ImpactScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { RisePlusScreen } from '../screens/RisePlusScreen';
 import { SquadScreen } from '../screens/SquadScreen';
 import { WinScreen } from '../screens/WinScreen';
 
 export type RootStackParamList = {
+  Onboarding: undefined;
   MainTabs: undefined;
   AlarmCreate: undefined;
   AlarmRing: undefined;
@@ -80,6 +83,10 @@ function MainTabs() {
 }
 
 export function Navigation() {
+  // Читается один раз при монтировании: initialRouteName нельзя менять на лету,
+  // а после онбординга экран всё равно заменяется через replace.
+  const onboardingDone = useStore.getState().onboardingDone;
+
   const openRing = useCallback(() => {
     if (!navigationRef.isReady()) return;
     // Экран срабатывания всегда поверх остального: испытание нельзя пропустить,
@@ -91,7 +98,14 @@ export function Navigation() {
 
   return (
     <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        screenOptions={{ headerShown: false }}
+        // §6.2: онбординг обязателен при первом запуске — без экрана разрешений
+        // и проверки будильника пользователь узнает о неработающем будильнике
+        // только утром, когда проспит.
+        initialRouteName={onboardingDone ? 'MainTabs' : 'Onboarding'}
+      >
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="MainTabs" component={MainTabs} />
 
         <Stack.Screen

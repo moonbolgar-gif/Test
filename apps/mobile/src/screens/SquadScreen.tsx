@@ -3,7 +3,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../components/Button';
@@ -23,6 +24,16 @@ export function SquadScreen() {
   const profile = useStore((s) => s.profile);
   const nudge = useStore((s) => s.nudge);
   const react = useStore((s) => s.reactToEvent);
+  const addFriend = useStore((s) => s.addFriend);
+
+  const [draftName, setDraftName] = useState('');
+
+  const submitFriend = (): void => {
+    if (!draftName.trim()) return;
+    addFriend(draftName);
+    setDraftName('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   // §6.14: лидерборд только среди друзей, свой ряд подсвечен.
   const board = useMemo(() => {
@@ -106,9 +117,37 @@ export function SquadScreen() {
             ))}
 
             <Card style={styles.referral}>
-              <Text style={type.label}>🎁 Приведи друга</Text>
-              <Text style={type.caption}>Награда придёт, когда он пройдёт 3 подъёма</Text>
-              <Button label="📲 Пригласить" variant="primary" onPress={invite} />
+              <Text style={type.label}>🎁 Позвать в команду</Text>
+              <Text style={type.caption}>
+                Ссылка уйдёт в Telegram, WhatsApp или SMS. Друг откроет — и сразу у тебя
+                в команде. Награда за приглашение придёт, когда он пройдёт 3 подъёма.
+              </Text>
+
+              <View style={styles.addRow}>
+                <TextInput
+                  value={draftName}
+                  onChangeText={setDraftName}
+                  placeholder="Имя друга"
+                  placeholderTextColor={colors.inkFaint}
+                  style={styles.input}
+                  returnKeyType="done"
+                  onSubmitEditing={submitFriend}
+                  maxLength={24}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="добавить друга"
+                  onPress={submitFriend}
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    pressed ? styles.addButtonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.addGlyph}>+</Text>
+                </Pressable>
+              </View>
+
+              <Button label="📲 Пригласить ссылкой" variant="primary" onPress={invite} />
             </Card>
           </>
         ) : (
@@ -199,6 +238,24 @@ const styles = StyleSheet.create({
   reactionCount: { fontFamily: fonts.bold, fontSize: scale(12), color: colors.ink },
 
   referral: { gap: spacing.sm, marginTop: spacing.sm },
+  addRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  input: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.lg,
+    fontFamily: fonts.medium,
+    fontSize: scale(15),
+    color: colors.ink,
+  },
+  addButton: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: colors.lime,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addButtonPressed: { transform: [{ scale: 0.94 }] },
+  addGlyph: { fontFamily: fonts.extrabold, fontSize: scale(24), color: colors.ink },
 
   boardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
   boardRowMe: { backgroundColor: colors.lime },

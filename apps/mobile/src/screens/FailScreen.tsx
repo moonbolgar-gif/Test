@@ -49,11 +49,14 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
     ? `${formatMoney(stakeCents)} списано.`
     : 'Серия обнулена.';
 
-  // Стрик уже обнулён в сторе, поэтому длину прежней серии показать нечем —
-  // в проде она придёт с сервера вместе с итогом срабатывания.
-  const subtitle = isMoneyMode
-    ? 'Завтра новый шанс. Вот куда ушли деньги.'
-    : 'Завтра можно начать заново.';
+  // §16: тон без унижения. Прежняя длина серии называется прямо — потеря
+  // должна ощущаться, иначе механика не работает, — но следом идёт надежда.
+  const lost = outcome?.streakBefore ?? 0;
+  const subtitle = lost > 0
+    ? `Ты потерял серию из ${lost} ${pluralDays(lost)}. Завтра можно начать заново.`
+    : isMoneyMode
+      ? 'Завтра новый шанс. Вот куда ушли деньги.'
+      : 'Завтра можно начать заново.';
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -82,6 +85,26 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
             ) : (
               <Text style={type.caption}>Загружаем разбивку…</Text>
             )}
+          </Card>
+        ) : null}
+
+        {/* §6.6: в командном режиме показываем, как утро прошло у остальных —
+            иначе непонятно, подвёл ли пользователь только себя. */}
+        {outcome?.squad ? (
+          <Card style={styles.squad}>
+            <Text style={type.eyebrow}>УТРО КОМАНДЫ</Text>
+            {outcome.squad.members.map((member) => (
+              <View key={member.id} style={styles.squadRow}>
+                <Text style={type.body}>
+                  {member.wokeUp ? '✓' : '😴'} {member.name}
+                </Text>
+                <Text style={type.caption}>
+                  {member.wokeUp
+                    ? `встал в ${member.wokeUpAt}`
+                    : `взнос ${formatMoney(member.forfeitedCents)} в фонд`}
+                </Text>
+              </View>
+            ))}
           </Card>
         ) : null}
 
@@ -142,4 +165,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
     marginTop: spacing.md,
   },
+
+  squad: { width: '100%', gap: spacing.sm, marginTop: spacing.sm },
+  squadRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 });

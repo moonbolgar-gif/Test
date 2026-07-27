@@ -14,7 +14,8 @@
     "typecheck": "npm run typecheck -w @rise/mobile -w @rise/shared",
     "test:money": "node --experimental-strip-types --test 'supabase/functions/_shared/*_test.ts'",
     "test:rls": "./supabase/tests/run.sh",
-    "test": "npm run test:money && npm run test:alarm && npm run test:rls",
-    "test:alarm": "node --experimental-strip-types --test 'apps/mobile/src/features/alarm/*_test.ts'"
+    "test": "npm run test:money && npm run test:alarm && npm run test:squad && npm run test:rls",
+    "test:alarm": "node --experimental-strip-types --test 'apps/mobile/src/features/alarm/*_test.ts'",
+    "test:squad": "node --experimental-strip-types --test 'apps/mobile/src/features/team/*_test.ts'"
   }
 }
