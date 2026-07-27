@@ -11,6 +11,9 @@
     "start": "npm run start -w @rise/mobile",
     "android": "npm run android -w @rise/mobile",
     "ios": "npm run ios -w @rise/mobile",
-    "typecheck": "npm run typecheck -w @rise/mobile -w @rise/shared"
+    "typecheck": "npm run typecheck -w @rise/mobile -w @rise/shared",
+    "test:money": "node --experimental-strip-types --test 'supabase/functions/_shared/*_test.ts'",
+    "test:rls": "./supabase/tests/run.sh",
+    "test": "npm run test:money && npm run test:rls"
   }
 }
