@@ -9,7 +9,7 @@
  * при закрытом приложении, нужен нативный модуль из §4.1 (Фаза 0).
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Platform, Vibration } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 
@@ -24,13 +24,46 @@ const RAMP_TICK_MS = 250;
 /** Паттерн вибрации: пауза, вибро, пауза… Повторяется, пока играет будильник. */
 const VIBRATION_PATTERN = [0, 600, 900];
 
-export function useAlarmSound(active: boolean): void {
+/**
+ * Возвращает `stop` — остановку звука по требованию.
+ *
+ * Полагаться только на очистку эффекта нельзя: она срабатывает в момент
+ * размонтирования, то есть уже во время перехода на следующий экран. Обращения
+ * к нативным модулям в этот момент — источник сбоев, закрывающих приложение,
+ * поэтому звук глушится явно и заранее, пока экран ещё жив.
+ */
+export function useAlarmSound(active: boolean): { stop: () => void } {
   const player = useAudioPlayer(alarmSound);
   const rampTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopped = useRef(false);
+
+  // Общая остановка: вызывается и из cleanup, и вручную перед переходом.
+  // Повторный вызов безвреден.
+  const stop = useCallback(() => {
+    if (stopped.current) return;
+    stopped.current = true;
+
+    if (rampTimer.current) {
+      clearInterval(rampTimer.current);
+      rampTimer.current = null;
+    }
+    Vibration.cancel();
+    try {
+      player.pause();
+    } catch {
+      // Плеер уже освобождён — глушить нечего.
+    }
+    // Возвращаем обычный режим, иначе приложение продолжит перебивать
+    // чужую музыку после того, как будильник отзвонил.
+    if (Platform.OS === 'ios') {
+      setAudioModeAsync({ playsInSilentMode: false }).catch(() => {});
+    }
+  }, [player]);
 
   useEffect(() => {
     if (!active) return;
 
+    stopped.current = false;
     let cancelled = false;
 
     // §6.10: будильник обязан звучать, даже если телефон в беззвучном режиме —
@@ -72,21 +105,9 @@ export function useAlarmSound(active: boolean): void {
 
     return () => {
       cancelled = true;
-      if (rampTimer.current) {
-        clearInterval(rampTimer.current);
-        rampTimer.current = null;
-      }
-      Vibration.cancel();
-      try {
-        player.pause();
-      } catch {
-        // Плеер уже освобождён — глушить нечего.
-      }
-      // Возвращаем обычный режим, иначе приложение продолжит перебивать
-      // чужую музыку после того, как будильник отзвонил.
-      if (Platform.OS === 'ios') {
-        setAudioModeAsync({ playsInSilentMode: false }).catch(() => {});
-      }
+      stop();
     };
-  }, [active, player]);
+  }, [active, player, stop]);
+
+  return { stop };
 }

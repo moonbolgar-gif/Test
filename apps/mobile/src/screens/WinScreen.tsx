@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { Platform, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
 
 import { AnimatedNumber } from '../components/AnimatedNumber';
@@ -39,33 +39,27 @@ import { scale } from '../design/type';
 import { formatMoney, pluralDays } from '../lib/format';
 import { useStore } from '../lib/store';
 
-/** §4.3 — превью карточки 9:16 поверх записанного видео. */
-function ShareCardPreview({ streak, videoUri }: { streak: number; videoUri: string | null }) {
-  // Плеер создаётся всегда: хук нельзя вызывать условно. При null источнике
-  // expo-video просто ничего не показывает.
-  const player = useVideoPlayer(videoUri, (instance) => {
-    try {
-      instance.loop = true;
-      instance.muted = true;
-      instance.play();
-    } catch {
-      // Битый файл не должен ронять экран победы — карточка покажется без видео.
-    }
-  });
-
+/**
+ * Превью шеринг-карточки 9:16 (§4.3).
+ *
+ * Карточка статична намеренно. Раньше здесь проигрывалось записанное видео
+ * через expo-video, и связка «живая камера + видеоплеер + конфетти» на одном
+ * экране укладывала приложение нативным сбоем, который не ловится границей
+ * ошибок. Для демонстрации важно, как карточка выглядит, а не воспроизводится
+ * ли она прямо здесь: сам файл записан и уходит в Stories через «Поделиться».
+ *
+ * Композитинг настоящих слоёв в файл — §4.3, Фаза 3.
+ */
+function ShareCardPreview({
+  streak, hasVideo,
+}: { streak: number; hasVideo: boolean }) {
   return (
     <View style={styles.shareCard}>
-      {videoUri ? (
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          nativeControls={false}
-        />
-      ) : null}
-
-      <View style={styles.scrimTop} pointerEvents="none" />
-      <View style={styles.scrimBottom} pointerEvents="none" />
+      <LinearGradient
+        colors={['#1D2430', '#12161D', '#000000']}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.shareGlow} pointerEvents="none" />
 
       <View style={styles.shareContent}>
         <Text style={styles.shareLogo}>RISE</Text>
@@ -73,7 +67,15 @@ function ShareCardPreview({ streak, videoUri }: { streak: number; videoUri: stri
           <Text style={styles.shareStreak}>{streak}</Text>
           <Text style={styles.shareStreakLabel}>DAY STREAK 🔥</Text>
         </View>
-        <Text style={styles.shareHook}>я победил будильник 💪{'\n'}а ты сможешь?</Text>
+        <View>
+          <Text style={styles.shareHook}>я победил будильник 💪{'\n'}а ты сможешь?</Text>
+          {hasVideo ? (
+            <View style={styles.videoBadge}>
+              <View style={styles.videoDot} />
+              <Text style={styles.videoBadgeText}>видео записано</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -247,9 +249,11 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
           ) : null}
 
           <Animated.View entering={FadeInDown.delay(stagger(5)).springify()} style={styles.shareBlock}>
-            <ShareCardPreview streak={outcome.streakAfter} videoUri={outcome.videoUri} />
+            <ShareCardPreview streak={outcome.streakAfter} hasVideo={outcome.videoUri !== null} />
             <DarkCaption>
-              {outcome.videoUri ? 'Готово к Stories · 9:16' : 'Видео не записано · 9:16'}
+              {outcome.videoUri
+                ? 'Готово к Stories · 9:16 · видео уйдёт вместе с карточкой'
+                : 'Готово к Stories · 9:16'}
             </DarkCaption>
           </Animated.View>
         </Animated.ScrollView>
@@ -363,15 +367,29 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: 'space-between',
   },
-  scrimTop: {
+  shareGlow: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, height: 56,
-    backgroundColor: 'rgba(14,15,19,0.45)',
+    top: -40, left: -30,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: colors.lime,
+    opacity: 0.16,
   },
-  scrimBottom: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0, height: 130,
-    backgroundColor: 'rgba(14,15,19,0.5)',
+  videoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+  videoDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.bad },
+  videoBadgeText: {
+    fontFamily: fonts.bold,
+    fontSize: scale(9),
+    color: colors.card,
   },
   shareLogo: {
     fontFamily: fonts.extrabold, fontSize: scale(14),

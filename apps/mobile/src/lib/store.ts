@@ -125,6 +125,15 @@ interface State {
   vouchers: Voucher[];
   toast: string | null;
   onboardingDone: boolean;
+  /**
+   * Глобальный выключатель записи (§6.19 «Авто-запись видео»).
+   *
+   * Заодно служит предохранителем: камера — самая хрупкая нативная часть, и
+   * если она подводит на конкретном устройстве, весь остальной цикл должен
+   * оставаться проходимым без неё.
+   */
+  videoEnabled: boolean;
+  toggleVideo: () => void;
 
   finishOnboarding: () => void;
   addFriend: (name: string) => void;
@@ -262,6 +271,13 @@ export const useStore = create<State>((set, get) => ({
 
   toast: null,
   onboardingDone: false,
+  videoEnabled: true,
+
+  toggleVideo: () =>
+    set((state) => ({
+      videoEnabled: !state.videoEnabled,
+      toast: state.videoEnabled ? '🎥 Запись видео выключена' : '🎥 Запись видео включена',
+    })),
 
   finishOnboarding: () => set({ onboardingDone: true }),
 

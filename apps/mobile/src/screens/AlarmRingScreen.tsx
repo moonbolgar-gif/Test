@@ -34,6 +34,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
   const completeRun = useStore((s) => s.completeRun);
   const failRun = useStore((s) => s.failRun);
   const attachVideo = useStore((s) => s.attachVideo);
+  const videoEnabled = useStore((s) => s.videoEnabled);
 
   const [remaining, setRemaining] = useState(() => (run ? remainingWindowMs(run.id) : 0));
   const camera = useRef<CameraCircleHandle>(null);
@@ -41,7 +42,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
 
   // §6.10: экран не гаснет, пока звонит будильник.
   useKeepAwake();
-  useAlarmSound(run !== null);
+  const { stop: stopSound } = useAlarmSound(run !== null);
 
   // Подсветка лица: экран поднимается на максимальную яркость, потому что
   // у фронтальной камеры нет вспышки. Прежнее значение возвращается на выходе,
@@ -82,13 +83,20 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
 
       const runId = run?.id ?? null;
 
-      // Переход происходит НЕМЕДЛЕННО, до всякой работы с камерой.
+      // Порядок здесь важнее, чем кажется, и оба варианта уже ломались.
       //
-      // Раньше здесь стоял `await camera.stopAndSave()`, и сбой нативной записи
-      // уносил с собой весь переход: пользователь решал испытание и оставался
-      // ни с чем. Цикл «испытание → итог» обязан замыкаться независимо от того,
-      // что происходит с камерой, поэтому файл догоняет результат позже
-      // (см. attachVideo).
+      // Сначала останавливаем запись — синхронно, пока экран ещё смонтирован
+      // и нативная камера жива. Вызвать stopRecording после перехода нельзя:
+      // камеру в этот момент сносят, и приложение падает целиком.
+      //
+      // Затем переходим — не дожидаясь файла. Ждать тоже нельзя: сбой записи
+      // тогда уносит с собой весь переход, и пользователь решает испытание
+      // впустую. Файл догоняет результат позже, через attachVideo.
+      // Звук и вибрация глушатся первыми: они трогают нативный слой, и делать
+      // это во время перехода нельзя.
+      stopSound();
+      const filePromise = camera.current?.stopRecordingNow() ?? Promise.resolve(null);
+
       if (won) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         completeRun(null);
@@ -99,17 +107,11 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
         navigation.replace('Fail');
       }
 
-      // Запись останавливается фоном. Ошибки гасятся: провал записи не должен
-      // ни на что влиять — испытание уже засчитано.
-      const handle = camera.current;
-      if (handle && runId) {
-        handle
-          .stopAndSave()
-          .then((uri) => attachVideo(runId, uri))
-          .catch(() => {});
+      if (runId) {
+        filePromise.then((uri) => attachVideo(runId, uri)).catch(() => {});
       }
     },
-    [attachVideo, completeRun, failRun, navigation, run],
+    [attachVideo, completeRun, failRun, navigation, run, stopSound],
   );
 
   // Окно отсчитывает demoServer (§4.2), экран только опрашивает остаток.
@@ -174,7 +176,7 @@ export function AlarmRingScreen({ navigation }: { navigation: { replace: (route:
       {/* Камера по центру и крупно: на прежних 104 pt лицо было неразличимо,
           и не читалось, идёт ли запись вообще. */}
       <View style={styles.cameraBlock}>
-        <CameraCircle ref={camera} progress={elapsed} recording={run.autoRecord} />
+        <CameraCircle ref={camera} progress={elapsed} recording={run.autoRecord && videoEnabled} />
       </View>
 
       <Text style={[type.eyebrow, styles.challengeTitle]}>{challengeTitle}</Text>

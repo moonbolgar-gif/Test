@@ -44,8 +44,18 @@ const STOP_TIMEOUT_MS = 4000;
 const LIGHT = '#FFF4DC';
 
 export interface CameraCircleHandle {
-  /** Никогда не бросает и не висит дольше STOP_TIMEOUT_MS. */
-  stopAndSave: () => Promise<string | null>;
+  /**
+   * Останавливает запись СИНХРОННО и возвращает промис файла.
+   *
+   * Вызывать обязательно, пока компонент ещё смонтирован. Раньше остановка
+   * шла после перехода на следующий экран, то есть `stopRecording()` попадал
+   * на камеру, которую в этот момент уже сносят, — это нативный сбой, который
+   * закрывает приложение целиком и не ловится границей ошибок.
+   *
+   * Сам промис можно ждать сколько угодно и где угодно: он не бросает и
+   * ограничен таймаутом.
+   */
+  stopRecordingNow: () => Promise<string | null>;
 }
 
 interface Props {
@@ -110,29 +120,28 @@ export const CameraCircle = forwardRef<CameraCircleHandle, Props>(function Camer
   }, [failed, granted, ready, recording]);
 
   useImperativeHandle(ref, () => ({
-    stopAndSave: async () => {
+    stopRecordingNow: () => {
       const promise = recordingPromise.current;
       recordingPromise.current = null;
-      setActive(false);
-      if (!promise) return null;
 
+      // Синхронная часть: пока мы здесь, компонент гарантированно смонтирован.
       try {
         camera.current?.stopRecording();
       } catch {
-        // Камера могла уже размонтироваться — файл всё равно попробуем забрать.
+        // Нативная сторона могла уже закрыть сессию — файла просто не будет.
       }
+      setActive(false);
 
-      try {
-        // Гонка с таймаутом: если нативная сторона не отдаст файл, экран
-        // победы не должен ждать её вечно.
-        const result = await Promise.race([
-          promise,
-          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), STOP_TIMEOUT_MS)),
-        ]);
-        return result?.uri ?? null;
-      } catch {
-        return null;
-      }
+      if (!promise) return Promise.resolve(null);
+
+      // Асинхронная часть безопасна в любой момент: ждём файл, но не дольше
+      // таймаута, и никогда не бросаем.
+      return Promise.race([
+        promise,
+        new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), STOP_TIMEOUT_MS)),
+      ])
+        .then((result) => result?.uri ?? null)
+        .catch(() => null);
     },
   }));
 

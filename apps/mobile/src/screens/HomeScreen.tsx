@@ -61,6 +61,8 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
   const alarms = useStore((s) => s.alarms);
   const startRun = useStore((s) => s.startRun);
   const createTestAlarm = useStore((s) => s.createTestAlarm);
+  const videoEnabled = useStore((s) => s.videoEnabled);
+  const toggleVideo = useStore((s) => s.toggleVideo);
   const stage = useMascotStage();
 
   // Ближайший по времени, а не первый в списке: пользователь мог добавить
@@ -182,6 +184,12 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
             onPress={() => simulate(next.id)}
           />
         ) : null}
+
+        <Button
+          label={videoEnabled ? '🎥 Запись видео: вкл' : '🎥 Запись видео: выкл'}
+          variant="ghost"
+          onPress={toggleVideo}
+        />
 
         {/* §4.1: будильник звонит, пока приложение живо. Надёжное срабатывание
             при выгруженном приложении — нативный модуль и Фаза 0. Пока его нет,
