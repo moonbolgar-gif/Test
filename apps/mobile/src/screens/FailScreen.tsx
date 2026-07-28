@@ -13,9 +13,8 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-
 import { Button } from '../components/Button';
+import { Reveal } from '../components/Reveal';
 import {
   DarkBody,
   DarkCaption,
@@ -27,7 +26,6 @@ import {
 } from '../components/dark';
 import { Avatar } from '../components/primitives';
 import { colors, fonts, onDark, radius, spacing } from '../design/tokens';
-import { stagger } from '../design/motion';
 import { scale } from '../design/type';
 import { fetchServiceFee, fetchStakeSplit, splitStake } from '../lib/demoServer';
 import { formatMoney, pluralDays } from '../lib/format';
@@ -40,7 +38,11 @@ interface Breakdown {
   fee: number;
 }
 
-export function FailScreen({ navigation }: { navigation: { popToTop: () => void } }) {
+export function FailScreen({
+  navigation,
+}: {
+  navigation: { popToTop: () => void; navigate: (route: string) => void };
+}) {
   const outcome = useStore((s) => s.lastOutcome);
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
 
@@ -80,17 +82,17 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
     <DarkSurface tone="fail">
       <SafeAreaView style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeIn.delay(stagger(0)).duration(400)} style={styles.headline}>
+          <Reveal delay={0} style={styles.headline}>
             <Text style={styles.emoji}>💸</Text>
             <DarkEyebrow color={colors.bad}>БУДИЛЬНИК ПОБЕДИЛ</DarkEyebrow>
             <DarkTitle>{title}</DarkTitle>
             <View style={styles.subtitle}>
               <DarkBody>{subtitle}</DarkBody>
             </View>
-          </Animated.View>
+          </Reveal>
 
           {isMoneyMode ? (
-            <Animated.View entering={FadeInDown.delay(stagger(1)).springify()}>
+            <Reveal delay={160}>
               <GlassCard style={styles.receipt}>
                 <DarkEyebrow>КУДА УШЛИ ДЕНЬГИ</DarkEyebrow>
                 {breakdown ? (
@@ -111,13 +113,13 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
                   <DarkCaption>Загружаем разбивку…</DarkCaption>
                 )}
               </GlassCard>
-            </Animated.View>
+            </Reveal>
           ) : null}
 
           {/* §6.6: в командном режиме показываем, как утро прошло у остальных —
               иначе непонятно, подвёл ли пользователь только себя. */}
           {outcome?.squad ? (
-            <Animated.View entering={FadeInDown.delay(stagger(2)).springify()}>
+            <Reveal delay={320}>
               <GlassCard style={styles.squad}>
                 <DarkEyebrow>УТРО КОМАНДЫ</DarkEyebrow>
                 {outcome.squad.members.map((member) => (
@@ -137,11 +139,23 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
                   </View>
                 ))}
               </GlassCard>
-            </Animated.View>
+            </Reveal>
+          ) : null}
+
+          {outcome?.videoUri ? (
+            <Reveal delay={440}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => navigation.navigate('VideoPreview')}
+                style={styles.watchButton}
+              >
+                <Text style={styles.watchText}>▶︎ Посмотреть свою запись</Text>
+              </Pressable>
+            </Reveal>
           ) : null}
 
           {isMoneyMode ? (
-            <Animated.View entering={FadeIn.delay(stagger(3))}>
+            <Reveal delay={480}>
               <Pressable
                 accessibilityRole="button"
                 onPress={() =>
@@ -155,13 +169,13 @@ export function FailScreen({ navigation }: { navigation: { popToTop: () => void 
               >
                 <Text style={styles.dispute}>Оспорить списание</Text>
               </Pressable>
-            </Animated.View>
+            </Reveal>
           ) : null}
         </ScrollView>
 
-        <Animated.View entering={FadeIn.delay(stagger(4))} style={styles.actions}>
+        <View style={styles.actions}>
           <Button label="Завтра отыграюсь" variant="lime" onPress={() => navigation.popToTop()} />
-        </Animated.View>
+        </View>
       </SafeAreaView>
     </DarkSurface>
   );
@@ -217,4 +231,12 @@ const styles = StyleSheet.create({
   },
 
   actions: { padding: spacing.lg, paddingTop: spacing.sm },
+  watchButton: {
+    alignSelf: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    backgroundColor: onDark.glassStrong,
+  },
+  watchText: { fontFamily: fonts.bold, fontSize: scale(13.5), color: onDark.text },
 });

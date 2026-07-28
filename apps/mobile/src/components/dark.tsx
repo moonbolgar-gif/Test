@@ -6,16 +6,17 @@
  * всё, «премиальные» моменты перестанут выделяться и приём перестанет работать.
  */
 
-import { type ReactNode, useEffect } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
+import { type ReactNode, useEffect, useRef } from 'react';
+import {
+  Animated,
   Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors, darkSurface, fonts, onDark, radius, spacing } from '../design/tokens';
 import { scale } from '../design/type';
@@ -38,23 +39,30 @@ export function Orb({
   opacity?: number;
   duration?: number;
 }) {
-  const drift = useSharedValue(0);
+  // Встроенный Animated, а не Reanimated: орбы висят на экранах итога, где
+  // надёжность важнее — см. комментарий в components/Reveal.tsx.
+  const drift = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    drift.value = withRepeat(
-      withTiming(1, { duration, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true,
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(drift, {
+          toValue: 1,
+          duration,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(drift, {
+          toValue: 0,
+          duration,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
     );
+    loop.start();
+    return () => loop.stop();
   }, [drift, duration]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: drift.value * 46 - 23 },
-      { translateY: drift.value * 34 - 17 },
-      { scale: 1 + drift.value * 0.08 },
-    ],
-  }));
 
   return (
     <Animated.View
@@ -67,8 +75,12 @@ export function Orb({
           borderRadius: size / 2,
           backgroundColor: color,
           opacity,
+          transform: [
+            { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-23, 23] }) },
+            { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [-17, 17] }) },
+            { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) },
+          ],
         },
-        style,
       ]}
     />
   );

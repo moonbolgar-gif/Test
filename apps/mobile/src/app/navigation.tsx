@@ -26,6 +26,7 @@ import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { RisePlusScreen } from '../screens/RisePlusScreen';
 import { SquadScreen } from '../screens/SquadScreen';
+import { VideoPreviewScreen } from '../screens/VideoPreviewScreen';
 import { WinScreen } from '../screens/WinScreen';
 
 export type RootStackParamList = {
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   Win: undefined;
   Fail: undefined;
   RisePlus: undefined;
+  VideoPreview: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -142,6 +144,13 @@ export function Navigation() {
         <Stack.Screen
           name="RisePlus"
           component={RisePlusScreen}
+          options={{ presentation: 'modal' }}
+        />
+
+        {/* Плеер живёт на отдельном экране, а не на пути «испытание → итог». */}
+        <Stack.Screen
+          name="VideoPreview"
+          component={VideoPreviewScreen}
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>

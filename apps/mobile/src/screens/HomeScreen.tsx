@@ -19,6 +19,7 @@ import { colors, darkSurface, fonts, onDark, radius, spacing } from '../design/t
 import { scale, type } from '../design/type';
 import { WEEKDAY_LABELS, WEEK_ORDER, formatMoney, formatRepeatDays, formatTime, pluralDays } from '../lib/format';
 import { useMascotStage, useStore, type DemoAlarm } from '../lib/store';
+import { BUILD } from '../lib/version';
 
 /** Недельная полоса Пн–Вс (§6.4). */
 function WeekStrip({ done }: { done: number[] }) {
@@ -198,6 +199,10 @@ export function HomeScreen({ navigation }: { navigation: { navigate: (r: string,
           Будильник звонит, пока приложение открыто или свёрнуто. При полностью
           закрытом приложении разбудить он пока не может.
         </Text>
+
+        {/* Видимая метка сборки — чтобы сразу было понятно, обновилось ли
+            приложение на телефоне. См. lib/version.ts. */}
+        <Text style={[type.caption, styles.build]}>{BUILD}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -270,4 +275,5 @@ const styles = StyleSheet.create({
 
   simulate: { marginTop: spacing.xs },
   demoNote: { textAlign: 'center', paddingHorizontal: spacing.md },
+  build: { textAlign: 'center', opacity: 0.5 },
 });

@@ -154,6 +154,8 @@ interface State {
    * начала следующего.
    */
   attachVideo: (runId: string, videoUri: string | null) => void;
+  /** §4.4 — пользователь отказался сохранять запись: ссылка на файл убирается. */
+  clearVideo: () => void;
   markShared: () => void;
   reactToEvent: (eventId: string) => void;
   nudge: (memberId: string) => void;
@@ -519,6 +521,11 @@ export const useStore = create<State>((set, get) => ({
       if (!videoUri || state.lastOutcome?.runId !== runId) return {};
       return { lastOutcome: { ...state.lastOutcome, videoUri } };
     }),
+
+  clearVideo: () =>
+    set((state) =>
+      state.lastOutcome ? { lastOutcome: { ...state.lastOutcome, videoUri: null } } : {},
+    ),
 
   markShared: () =>
     set((state) => ({

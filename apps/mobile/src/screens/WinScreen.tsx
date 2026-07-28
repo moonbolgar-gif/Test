@@ -14,15 +14,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Platform, Share, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
-
-import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Button } from '../components/Button';
-import { Confetti, StreakFlame } from '../components/animated';
+import { CountUp, Reveal } from '../components/Reveal';
+import { StreakFlame } from '../components/animated';
 import {
   DarkBody,
   DarkCaption,
@@ -34,7 +32,6 @@ import {
 } from '../components/dark';
 import { Avatar } from '../components/primitives';
 import { colors, fonts, onDark, radius, shadow, spacing } from '../design/tokens';
-import { stagger } from '../design/motion';
 import { scale } from '../design/type';
 import { formatMoney, pluralDays } from '../lib/format';
 import { useStore } from '../lib/store';
@@ -81,7 +78,11 @@ function ShareCardPreview({
   );
 }
 
-export function WinScreen({ navigation }: { navigation: { popToTop: () => void } }) {
+export function WinScreen({
+  navigation,
+}: {
+  navigation: { popToTop: () => void; navigate: (route: string) => void };
+}) {
   const outcome = useStore((s) => s.lastOutcome);
   const profile = useStore((s) => s.profile);
   const markShared = useStore((s) => s.markShared);
@@ -129,28 +130,26 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
   return (
     <DarkSurface tone="win">
       <SafeAreaView style={styles.screen}>
-        <Confetti />
-
-        <Animated.ScrollView
+        <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={ZoomIn.delay(stagger(0)).springify()} style={styles.headline}>
+          <Reveal delay={0} style={styles.headline}>
             <Text style={styles.emoji}>🎉</Text>
             <DarkEyebrow color={colors.good}>ТЫ ПОБЕДИЛ СОН</DarkEyebrow>
             <DarkTitle>{title}</DarkTitle>
-          </Animated.View>
+          </Reveal>
 
           {/* Серия — главный счётчик экрана. Досчитывается от прежнего значения,
               чтобы был виден именно прирост, а не просто число. */}
-          <Animated.View entering={FadeInDown.delay(stagger(1)).springify()}>
+          <Reveal delay={140}>
             <GlassCard accent style={styles.streakCard}>
               <View style={styles.streakTop}>
                 <StreakFlame size={24} />
                 <DarkEyebrow>СЕРИЯ ПОДЪЁМОВ</DarkEyebrow>
               </View>
               <View style={styles.streakRow}>
-                <AnimatedNumber
+                <CountUp
                   value={outcome.streakAfter}
                   from={outcome.streakBefore}
                   delay={420}
@@ -166,18 +165,18 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
                     : `День ${outcome.streakAfter}. Огонёк горит, не дай ему погаснуть.`}
               </DarkBody>
             </GlassCard>
-          </Animated.View>
+          </Reveal>
 
           {/* §6.12: при денежном режиме прямо говорим, что деньги остались. */}
           {isMoneyMode ? (
-            <Animated.View entering={FadeInDown.delay(stagger(2)).springify()}>
+            <Reveal delay={280}>
               <GlassCard style={styles.moneyCard}>
                 <View style={styles.moneyIcon}>
                   <Text style={styles.moneyGlyph}>💚</Text>
                 </View>
                 <View style={styles.moneyText}>
                   <DarkEyebrow color={colors.good}>ДЕНЬГИ ОСТАЛИСЬ У ТЕБЯ</DarkEyebrow>
-                  <AnimatedNumber
+                  <CountUp
                     value={outcome.stakeCents}
                     delay={620}
                     format={formatMoney}
@@ -188,10 +187,10 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
                   </DarkCaption>
                 </View>
               </GlassCard>
-            </Animated.View>
+            </Reveal>
           ) : null}
 
-          <Animated.View entering={FadeInDown.delay(stagger(3)).springify()} style={styles.rewards}>
+          <Reveal delay={420} style={styles.rewards}>
             <RewardTile
               icon="⚡️"
               value={`+${outcome.pointsEarned}`}
@@ -203,11 +202,11 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
               label={outcome.treeEarned ? 'новое дерево' : 'деревьев'}
               highlight={outcome.treeEarned}
             />
-          </Animated.View>
+          </Reveal>
 
           {/* §6.6 — итог командного челленджа. */}
           {outcome.squad ? (
-            <Animated.View entering={FadeInDown.delay(stagger(4)).springify()}>
+            <Reveal delay={560}>
               <GlassCard style={styles.squadCard}>
                 <DarkEyebrow>УТРО КОМАНДЫ</DarkEyebrow>
 
@@ -245,23 +244,38 @@ export function WinScreen({ navigation }: { navigation: { popToTop: () => void }
                   </View>
                 ) : null}
               </GlassCard>
-            </Animated.View>
+            </Reveal>
           ) : null}
 
-          <Animated.View entering={FadeInDown.delay(stagger(5)).springify()} style={styles.shareBlock}>
-            <ShareCardPreview streak={outcome.streakAfter} hasVideo={outcome.videoUri !== null} />
+          <Reveal delay={700} style={styles.shareBlock}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!outcome.videoUri}
+              onPress={() => navigation.navigate('VideoPreview')}
+            >
+              <ShareCardPreview streak={outcome.streakAfter} hasVideo={outcome.videoUri !== null} />
+            </Pressable>
+            {outcome.videoUri ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => navigation.navigate('VideoPreview')}
+                style={styles.watchButton}
+              >
+                <Text style={styles.watchText}>▶︎ Посмотреть запись</Text>
+              </Pressable>
+            ) : null}
             <DarkCaption>
               {outcome.videoUri
                 ? 'Готово к Stories · 9:16 · видео уйдёт вместе с карточкой'
                 : 'Готово к Stories · 9:16'}
             </DarkCaption>
-          </Animated.View>
-        </Animated.ScrollView>
+          </Reveal>
+        </ScrollView>
 
-        <Animated.View entering={FadeIn.delay(stagger(6))} style={styles.actions}>
+        <View style={styles.actions}>
           <Button label="📲 Поделиться" variant="lime" onPress={share} loading={shareBusy} />
           <Button label="На главную" variant="outlineDark" onPress={() => navigation.popToTop()} />
-        </Animated.View>
+        </View>
       </SafeAreaView>
     </DarkSurface>
   );
@@ -410,5 +424,13 @@ const styles = StyleSheet.create({
   },
 
   actions: { gap: spacing.sm, padding: spacing.lg, paddingTop: spacing.sm },
+  watchButton: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    backgroundColor: onDark.glassStrong,
+  },
+  watchText: { fontFamily: fonts.bold, fontSize: scale(13.5), color: onDark.text },
   secondary: { borderColor: onDark.glassBorder },
 });
